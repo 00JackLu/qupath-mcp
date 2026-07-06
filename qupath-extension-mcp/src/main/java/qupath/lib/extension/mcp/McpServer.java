@@ -93,6 +93,7 @@ public class McpServer {
         toolRegistry.register(new ImageTools.GetImageInfo(toolRegistry));
         toolRegistry.register(new ImageTools.GetImageMetadata(toolRegistry));
         toolRegistry.register(new ImageTools.ReadRegion(toolRegistry));
+        toolRegistry.register(new ImageTools.CaptureView(toolRegistry));
 
         // Object tools
         toolRegistry.register(new ObjectTools.ListObjects(toolRegistry));

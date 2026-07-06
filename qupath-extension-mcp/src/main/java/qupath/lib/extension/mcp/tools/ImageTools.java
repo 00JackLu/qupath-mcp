@@ -31,6 +31,7 @@ import qupath.lib.extension.mcp.protocol.models.ToolDefinition;
 import qupath.lib.extension.mcp.protocol.models.ToolResult;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.images.servers.RenderedImageServer;
+import qupath.lib.gui.tools.GuiTools;
 import qupath.lib.gui.viewer.QuPathViewer;
 import qupath.lib.images.ImageData;
 import qupath.lib.images.servers.ImageServer;
@@ -40,9 +41,12 @@ import qupath.lib.regions.RegionRequest;
 
 import javax.imageio.ImageIO;
 import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 
 /**
  * Tools for querying image data.
@@ -483,6 +487,136 @@ public class ImageTools {
 
             result.add("bands", bands);
             return result;
+        }
+    }
+
+    /**
+     * Capture what QuPath is currently displaying (VLM perception).
+     * Returns the snapshot as an MCP image content block so a vision-capable
+     * agent can actually see it, plus a small text block of metadata.
+     */
+    public static class CaptureView implements McpTool {
+
+        private static final String NAME = "qupath_capture_view";
+
+        private final McpToolRegistry registry;
+
+        public CaptureView(McpToolRegistry registry) {
+            this.registry = registry;
+        }
+
+        @Override
+        public ToolDefinition getDefinition() {
+            JsonObject inputSchema = new JsonObject();
+            inputSchema.addProperty("type", "object");
+
+            JsonObject properties = new JsonObject();
+
+            JsonObject type = new JsonObject();
+            type.addProperty("type", "string");
+            type.addProperty("description", "What to capture: 'viewer' (rendered image + annotation/detection " +
+                "overlays at the current zoom/pan), 'window' (the whole QuPath window), or 'full' (entire screen)");
+            type.add("enum", GSON.toJsonTree(new String[]{"viewer", "window", "full"}));
+            type.addProperty("default", "viewer");
+            properties.add("type", type);
+
+            JsonObject maxDimension = new JsonObject();
+            maxDimension.addProperty("type", "integer");
+            maxDimension.addProperty("description", "Scale the longest side down to at most this many pixels " +
+                "(keeps the image small for vision models). Use 0 to disable scaling.");
+            maxDimension.addProperty("default", 1536);
+            maxDimension.addProperty("minimum", 0);
+            properties.add("maxDimension", maxDimension);
+
+            inputSchema.add("properties", properties);
+            inputSchema.addProperty("additionalProperties", false);
+
+            return new ToolDefinition(
+                NAME,
+                "Capture what QuPath is currently displaying and return it as an image. " +
+                "The 'viewer' capture shows the rendered slide together with annotation/detection overlays " +
+                "at the current zoom and pan - exactly what a user sees on screen. " +
+                "Use this to visually perceive the image, inspect detection results, or decide where to act next.",
+                inputSchema,
+                null,
+                ToolDefinition.Annotations.readOnly()
+            );
+        }
+
+        @Override
+        public ToolResult execute(JsonObject arguments) {
+            QuPathGUI qupath = registry.getQuPath();
+            if (qupath == null) {
+                return ToolResult.error("No QuPath instance available (headless mode)");
+            }
+
+            String typeArg = arguments.has("type") ? arguments.get("type").getAsString() : "viewer";
+            int maxDimension = arguments.has("maxDimension") ? arguments.get("maxDimension").getAsInt() : 1536;
+
+            GuiTools.SnapshotType snapshotType;
+            switch (typeArg) {
+                case "window":
+                    snapshotType = GuiTools.SnapshotType.MAIN_WINDOW_SCREENSHOT;
+                    break;
+                case "full":
+                    snapshotType = GuiTools.SnapshotType.FULL_SCREENSHOT;
+                    break;
+                case "viewer":
+                default:
+                    snapshotType = GuiTools.SnapshotType.VIEWER;
+                    break;
+            }
+
+            try {
+                // makeSnapshot hops to the JavaFX application thread internally as needed.
+                BufferedImage image = GuiTools.makeSnapshot(qupath, snapshotType);
+                if (image == null) {
+                    return ToolResult.error("Failed to capture view: null snapshot");
+                }
+
+                boolean scaled = false;
+                if (maxDimension > 0 && Math.max(image.getWidth(), image.getHeight()) > maxDimension) {
+                    image = scaleToMax(image, maxDimension);
+                    scaled = true;
+                }
+
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                if (!ImageIO.write(image, "PNG", baos) || baos.size() == 0) {
+                    return ToolResult.error("Failed to encode snapshot as PNG");
+                }
+                String base64 = Base64.getEncoder().encodeToString(baos.toByteArray());
+
+                JsonObject meta = new JsonObject();
+                meta.addProperty("format", "png");
+                meta.addProperty("captured", typeArg);
+                meta.addProperty("width", image.getWidth());
+                meta.addProperty("height", image.getHeight());
+                meta.addProperty("scaled", scaled);
+
+                List<ToolResult.Content> content = new ArrayList<>();
+                content.add(ToolResult.Content.text(GSON.toJson(meta)));
+                content.add(ToolResult.Content.image(base64, "image/png"));
+                return ToolResult.success(content);
+
+            } catch (Exception e) {
+                logger.error("Failed to capture view", e);
+                return ToolResult.error("Failed to capture view: " + e.getMessage(), e);
+            }
+        }
+
+        private static BufferedImage scaleToMax(BufferedImage src, int maxDimension) {
+            int w = src.getWidth();
+            int h = src.getHeight();
+            double scale = (double) maxDimension / Math.max(w, h);
+            int nw = Math.max(1, (int) Math.round(w * scale));
+            int nh = Math.max(1, (int) Math.round(h * scale));
+            BufferedImage dst = new BufferedImage(nw, nh, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = dst.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g.drawImage(src, 0, 0, nw, nh, null);
+            g.dispose();
+            return dst;
         }
     }
 }
