@@ -410,8 +410,50 @@ public class ObjectTools {
                 return ToolResult.error("No image is currently open");
             }
 
+            // Validate required 'type'
+            if (!arguments.has("type") || arguments.get("type").isJsonNull()) {
+                return ToolResult.error("Missing required parameter 'type' " +
+                    "(one of: rectangle, ellipse, line, polygon, points)");
+            }
             String roiType = arguments.get("type").getAsString();
+            String lower = roiType.toLowerCase();
+            if (!List.of("rectangle", "ellipse", "line", "polygon", "points").contains(lower)) {
+                return ToolResult.error("Invalid 'type': '" + roiType + "'. " +
+                    "Must be one of: rectangle, ellipse, line, polygon, points");
+            }
+
+            // Validate required 'coordinates'
+            if (!arguments.has("coordinates") || !arguments.get("coordinates").isJsonArray()) {
+                return ToolResult.error("Missing required parameter 'coordinates' (an array). " +
+                    "For rectangle/ellipse use [x, y, width, height]; for line use [x1, y1, x2, y2]; " +
+                    "for polygon/points use [[x1, y1], [x2, y2], ...]");
+            }
             JsonArray coords = arguments.getAsJsonArray("coordinates");
+
+            // Shape-specific coordinate checks
+            if (lower.equals("rectangle") || lower.equals("ellipse")) {
+                if (coords.size() < 4) {
+                    return ToolResult.error("'" + roiType + "' needs 4 coordinates " +
+                        "[x, y, width, height], got " + coords.size());
+                }
+            } else if (lower.equals("line")) {
+                if (coords.size() < 4) {
+                    return ToolResult.error("'line' needs 4 coordinates [x1, y1, x2, y2], got " + coords.size());
+                }
+            } else { // polygon or points
+                int min = lower.equals("polygon") ? 3 : 1;
+                if (coords.size() < min) {
+                    return ToolResult.error("'" + roiType + "' needs at least " + min +
+                        " [x, y] point pair(s), got " + coords.size());
+                }
+                for (int i = 0; i < coords.size(); i++) {
+                    if (!coords.get(i).isJsonArray() || coords.get(i).getAsJsonArray().size() < 2) {
+                        return ToolResult.error("'" + roiType + "' coordinates must be [x, y] pairs, " +
+                            "e.g. [[x1, y1], [x2, y2], ...]; element " + i + " is not a valid pair");
+                    }
+                }
+            }
+
             String classification = arguments.has("classification") &&
                                    !arguments.get("classification").isJsonNull()
                                    ? arguments.get("classification").getAsString() : null;
