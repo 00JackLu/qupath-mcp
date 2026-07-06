@@ -29,6 +29,7 @@ import qupath.lib.extension.mcp.protocol.models.ToolDefinition;
 import qupath.lib.extension.mcp.protocol.models.ToolResult;
 import qupath.lib.extension.mcp.util.ThreadUtils;
 import qupath.lib.gui.QuPathGUI;
+import qupath.lib.gui.scripting.QPEx;
 import qupath.lib.gui.scripting.languages.GroovyLanguage;
 import qupath.lib.images.ImageData;
 import qupath.lib.projects.Project;
@@ -143,7 +144,12 @@ public class ScriptTools {
                     ScriptParameters.Builder builder = ScriptParameters.builder()
                             .setScript(script)
                             .setWriter(outputWriter)
-                            .setErrorWriter(errorWriter);
+                            .setErrorWriter(errorWriter)
+                            // Match the QuPath script editor: import the core classes and static
+                            // QPEx methods so scripts can call getCurrentImageData(), getAnnotationObjects(),
+                            // etc. without adding imports themselves.
+                            .setDefaultImports(QPEx.getCoreClasses())
+                            .setDefaultStaticImports(Collections.singletonList(QPEx.class));
 
                     // Set project and image data if available
                     if (qupath != null) {

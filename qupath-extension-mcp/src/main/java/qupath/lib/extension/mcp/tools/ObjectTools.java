@@ -304,9 +304,11 @@ public class ObjectTools {
                 return ToolResult.error("Object not found: " + objectId);
             }
 
-            // Build detailed response using GsonTools for proper serialization
-            JsonElement jsonElement = GSON.toJsonTree(target);
-            JsonObject result = jsonElement.getAsJsonObject();
+            // Build detailed response using GsonTools for proper serialization.
+            // Serialize via a String rather than toJsonTree(): QuPath's PathObject GeoJSON
+            // adapter writes raw JSON with JsonWriter.jsonValue(), which Gson's JsonTreeWriter
+            // does not support (it throws UnsupportedOperationException).
+            JsonObject result = GSON.fromJson(GSON.toJson(target), JsonObject.class);
 
             // Remove potentially large ROI geometry if not requested
             if (!includeROI && result.has("roi")) {
@@ -778,12 +780,18 @@ public class ObjectTools {
                         ((List<PathObject>) objects).remove(hierarchy.getRootObject());
                 }
 
-                // Export to GeoJSON using GsonTools
-                String geojson = GSON.toJson(objects);
+                // Export to GeoJSON using GsonTools. A collection of PathObjects serializes to a
+                // JSON array of Features, so wrap it in a GeoJSON FeatureCollection (parsing it as a
+                // JsonObject directly would fail with "Expected JsonObject but was JsonArray").
+                JsonArray features = GSON.fromJson(GSON.toJson(objects), JsonArray.class);
+
+                JsonObject featureCollection = new JsonObject();
+                featureCollection.addProperty("type", "FeatureCollection");
+                featureCollection.add("features", features);
 
                 JsonObject result = new JsonObject();
                 result.addProperty("count", objects.size());
-                result.add("geojson", GSON.fromJson(geojson, JsonObject.class));
+                result.add("geojson", featureCollection);
 
                 return ToolResult.success(result);
 

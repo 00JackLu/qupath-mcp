@@ -30,6 +30,8 @@ import qupath.lib.extension.mcp.protocol.McpProtocolHandler.McpException;
 import qupath.lib.extension.mcp.protocol.models.ToolDefinition;
 import qupath.lib.extension.mcp.protocol.models.ToolResult;
 import qupath.lib.gui.QuPathGUI;
+import qupath.lib.gui.images.servers.RenderedImageServer;
+import qupath.lib.gui.viewer.QuPathViewer;
 import qupath.lib.images.ImageData;
 import qupath.lib.images.servers.ImageServer;
 import qupath.lib.images.servers.ImageServerMetadata;
@@ -37,6 +39,7 @@ import qupath.lib.images.servers.PixelCalibration;
 import qupath.lib.regions.RegionRequest;
 
 import javax.imageio.ImageIO;
+import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.util.Base64;
@@ -360,39 +363,68 @@ public class ImageTools {
                 @SuppressWarnings("unchecked")
                 ImageServer<BufferedImage> server = (ImageServer<BufferedImage>) imageData.getServer();
 
-                // Create region request
-                RegionRequest request = RegionRequest.createInstance(
-                    server.getPath(),
-                    downsample,
-                    x, y, width, height, z, t
-                );
+                if ("stats".equals(format)) {
+                    // Statistics need the raw pixel values, so read straight from the source server.
+                    RegionRequest request = RegionRequest.createInstance(
+                        server.getPath(), downsample, x, y, width, height, z, t);
+                    BufferedImage region = server.readRegion(request);
+                    if (region == null) {
+                        return ToolResult.error("Failed to read region: null result");
+                    }
+                    JsonObject stats = computePixelStatistics(region);
+                    return ToolResult.success(stats);
+                }
 
-                // Read the region
-                BufferedImage region = server.readRegion(request);
+                // For an image, render the RGB composite the user actually sees. Reading the raw
+                // server directly returns a BufferedImage that PNG cannot encode for non-RGB inputs
+                // (e.g. multi-channel FLOAT32 fluorescence), which silently produced an empty result.
+                BufferedImage region;
+                QuPathViewer viewer = qupath.getViewer();
+                if (viewer != null && viewer.getImageData() == imageData && viewer.getImageDisplay() != null) {
+                    // createRenderedServer applies the viewer's display settings (channel colors,
+                    // brightness/contrast) and yields an RGB image, without annotation/detection overlays.
+                    try (ImageServer<BufferedImage> renderServer =
+                             RenderedImageServer.createRenderedServer(server, viewer.getImageDisplay())) {
+                        RegionRequest request = RegionRequest.createInstance(
+                            renderServer.getPath(), downsample, x, y, width, height, z, t);
+                        region = renderServer.readRegion(request);
+                    }
+                } else {
+                    // No matching viewer (e.g. headless) - fall back to the raw server.
+                    RegionRequest request = RegionRequest.createInstance(
+                        server.getPath(), downsample, x, y, width, height, z, t);
+                    region = server.readRegion(request);
+                }
 
                 if (region == null) {
                     return ToolResult.error("Failed to read region: null result");
                 }
 
-                if ("stats".equals(format)) {
-                    // Return pixel statistics
-                    JsonObject stats = computePixelStatistics(region);
-                    return ToolResult.success(stats);
-                } else {
-                    // Return base64-encoded image
-                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                    ImageIO.write(region, "PNG", baos);
-                    String base64 = Base64.getEncoder().encodeToString(baos.toByteArray());
-
-                    JsonObject result = new JsonObject();
-                    result.addProperty("format", "png");
-                    result.addProperty("width", region.getWidth());
-                    result.addProperty("height", region.getHeight());
-                    result.addProperty("data", base64);
-                    result.addProperty("mimeType", "image/png");
-
-                    return ToolResult.success(result);
+                // Return base64-encoded PNG. Guard against ImageIO silently failing to encode an
+                // unsupported image type: repaint into a standard RGB buffer, then error if still empty.
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                if (!ImageIO.write(region, "PNG", baos) || baos.size() == 0) {
+                    BufferedImage rgb = new BufferedImage(
+                        region.getWidth(), region.getHeight(), BufferedImage.TYPE_INT_RGB);
+                    Graphics2D g = rgb.createGraphics();
+                    g.drawImage(region, 0, 0, null);
+                    g.dispose();
+                    baos.reset();
+                    if (!ImageIO.write(rgb, "PNG", baos) || baos.size() == 0) {
+                        return ToolResult.error(
+                            "Failed to encode region as PNG (unsupported image type: " + region.getType() + ")");
+                    }
                 }
+                String base64 = Base64.getEncoder().encodeToString(baos.toByteArray());
+
+                JsonObject result = new JsonObject();
+                result.addProperty("format", "png");
+                result.addProperty("width", region.getWidth());
+                result.addProperty("height", region.getHeight());
+                result.addProperty("data", base64);
+                result.addProperty("mimeType", "image/png");
+
+                return ToolResult.success(result);
 
             } catch (Exception e) {
                 logger.error("Failed to read region", e);
