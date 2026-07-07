@@ -27,14 +27,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.lib.extension.mcp.protocol.models.ToolDefinition;
 import qupath.lib.extension.mcp.protocol.models.ToolResult;
+import qupath.lib.common.GeneralTools;
 import qupath.lib.gui.QuPathGUI;
+import qupath.lib.gui.scripting.QPEx;
+import qupath.lib.gui.scripting.languages.GroovyLanguage;
 import qupath.lib.images.ImageData;
 import qupath.lib.plugins.PathPlugin;
 import qupath.lib.plugins.workflow.ScriptableWorkflowStep;
 import qupath.lib.plugins.workflow.Workflow;
 import qupath.lib.plugins.workflow.WorkflowStep;
+import qupath.lib.scripting.ScriptParameters;
 
 import java.io.IOException;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,6 +47,7 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.ServiceLoader;
 
@@ -467,6 +473,217 @@ public class PipelineTools {
                 s = s.substring(0, s.length() - ".groovy".length());
             s = s.replaceAll("[^A-Za-z0-9._-]", "_");
             return s.isBlank() ? "workflow" : s;
+        }
+    }
+
+    /**
+     * Export the recorded workflow as a structured JSON provenance record.
+     */
+    public static class ExportWorkflowJson implements McpTool {
+
+        private static final String NAME = "qupath_export_workflow_json";
+
+        private final McpToolRegistry registry;
+
+        public ExportWorkflowJson(McpToolRegistry registry) {
+            this.registry = registry;
+        }
+
+        @Override
+        public ToolDefinition getDefinition() {
+            JsonObject inputSchema = new JsonObject();
+            inputSchema.addProperty("type", "object");
+            JsonObject properties = new JsonObject();
+            JsonObject path = new JsonObject();
+            path.addProperty("type", "string");
+            path.addProperty("description", "Optional file path to also write the JSON to (requires file access). " +
+                "If omitted the JSON is only returned.");
+            properties.add("path", path);
+            inputSchema.add("properties", properties);
+            inputSchema.addProperty("additionalProperties", false);
+            return new ToolDefinition(
+                NAME,
+                "Export the current image's recorded workflow as a structured JSON provenance record: QuPath " +
+                "version, image name, each step's name/parameters/generated Groovy, and a runnable script that " +
+                "reproduces the analysis. This is the machine-readable trace used for deterministic replay.",
+                inputSchema,
+                null,
+                ToolDefinition.Annotations.readOnly()
+            );
+        }
+
+        @Override
+        public ToolResult execute(JsonObject arguments) {
+            QuPathGUI qupath = registry.getQuPath();
+            if (qupath == null)
+                return ToolResult.error("No QuPath instance available (headless mode)");
+            ImageData<?> imageData = qupath.getImageData();
+            if (imageData == null)
+                return ToolResult.error("No image is currently open");
+            try {
+                Workflow workflow = imageData.getHistoryWorkflow();
+                JsonObject record = new JsonObject();
+                record.addProperty("qupathVersion", GeneralTools.getVersion());
+                record.addProperty("image", imageData.getServer().getMetadata().getName());
+                record.addProperty("imageType", String.valueOf(imageData.getImageType()));
+
+                JsonArray steps = new JsonArray();
+                for (WorkflowStep step : workflow.getSteps()) {
+                    JsonObject s = new JsonObject();
+                    s.addProperty("name", step.getName());
+                    if (step instanceof ScriptableWorkflowStep sws)
+                        s.addProperty("script", sws.getScript());
+                    var pm = step.getParameterMap();
+                    if (pm != null && !pm.isEmpty()) {
+                        JsonObject params = new JsonObject();
+                        for (var entry : pm.entrySet())
+                            params.addProperty(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+                        s.add("parameters", params);
+                    }
+                    steps.add(s);
+                }
+                record.addProperty("stepCount", steps.size());
+                record.add("steps", steps);
+                record.addProperty("script", workflow.createScript());
+
+                if (arguments.has("path") && !arguments.get("path").isJsonNull()) {
+                    if (!registry.getConfig().isEnableFileAccess())
+                        return ToolResult.error("File access is disabled; omit 'path' to return JSON inline, or "
+                            + "set QUPATH_MCP_ENABLE_FILE_ACCESS=true.");
+                    Path target = Paths.get(arguments.get("path").getAsString());
+                    if (target.getParent() != null)
+                        Files.createDirectories(target.getParent());
+                    Files.writeString(target, record.toString(), StandardCharsets.UTF_8);
+                    record.addProperty("saved", target.toAbsolutePath().toString());
+                }
+                return ToolResult.success(record);
+            } catch (Exception e) {
+                logger.error("Failed to export workflow JSON", e);
+                return ToolResult.error("Failed to export workflow JSON: " + e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * Replay a workflow deterministically, without any LLM involvement, by executing its Groovy script.
+     */
+    public static class ReplayWorkflow implements McpTool {
+
+        private static final String NAME = "qupath_replay_workflow";
+
+        private final McpToolRegistry registry;
+
+        public ReplayWorkflow(McpToolRegistry registry) {
+            this.registry = registry;
+        }
+
+        @Override
+        public ToolDefinition getDefinition() {
+            JsonObject inputSchema = new JsonObject();
+            inputSchema.addProperty("type", "object");
+            JsonObject properties = new JsonObject();
+            JsonObject path = new JsonObject();
+            path.addProperty("type", "string");
+            path.addProperty("description", "Path to a saved workflow: a .groovy script, or a .json record " +
+                "produced by qupath_export_workflow_json (its 'script' field is executed).");
+            properties.add("path", path);
+            JsonObject script = new JsonObject();
+            script.addProperty("type", "string");
+            script.addProperty("description", "Inline Groovy to replay instead of a file. Provide either 'path' " +
+                "or 'script'.");
+            properties.add("script", script);
+            inputSchema.add("properties", properties);
+            inputSchema.addProperty("additionalProperties", false);
+            return new ToolDefinition(
+                NAME,
+                "Replay a saved workflow deterministically by running its Groovy in the QuPath context - with no " +
+                "LLM involvement. Reports object counts before and after so the replay can be compared with the " +
+                "original run. Executes code, so it requires script execution to be enabled.",
+                inputSchema,
+                null,
+                ToolDefinition.Annotations.destructive()
+            );
+        }
+
+        @Override
+        public ToolResult execute(JsonObject arguments) {
+            if (!registry.getConfig().isEnableScriptExecution())
+                return ToolResult.error("Script execution is disabled in MCP configuration "
+                    + "(set QUPATH_MCP_ENABLE_SCRIPTS=true).");
+            QuPathGUI qupath = registry.getQuPath();
+            if (qupath == null)
+                return ToolResult.error("No QuPath instance available (headless mode)");
+
+            String scriptText;
+            try {
+                scriptText = resolveScript(arguments);
+            } catch (Exception e) {
+                return ToolResult.error(e.getMessage());
+            }
+            if (scriptText == null || scriptText.isBlank())
+                return ToolResult.error("Nothing to replay: provide 'path' to a .groovy/.json workflow or inline "
+                    + "'script'.");
+
+            ImageData<?> imageData = qupath.getImageData();
+            int annBefore = 0, detBefore = 0;
+            if (imageData != null) {
+                annBefore = imageData.getHierarchy().getAnnotationObjects().size();
+                detBefore = imageData.getHierarchy().getDetectionObjects().size();
+            }
+
+            StringWriter out = new StringWriter();
+            StringWriter err = new StringWriter();
+            JsonObject result = new JsonObject();
+            try {
+                ScriptParameters params = ScriptParameters.builder()
+                        .setScript(scriptText)
+                        .setWriter(out)
+                        .setErrorWriter(err)
+                        .setDefaultImports(QPEx.getCoreClasses())
+                        .setDefaultStaticImports(Collections.singletonList(QPEx.class))
+                        .setProject(qupath.getProject())
+                        .setImageData(qupath.getImageData())
+                        .build();
+                GroovyLanguage.getInstance().execute(params);
+                result.addProperty("status", "success");
+            } catch (Exception e) {
+                logger.error("Workflow replay failed", e);
+                result.addProperty("status", "failed");
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                result.addProperty("error", cause.getMessage() != null ? cause.getMessage() : cause.toString());
+            }
+
+            result.addProperty("output", out.toString());
+            if (!err.toString().isBlank())
+                result.addProperty("errors", err.toString());
+            if (imageData != null) {
+                result.addProperty("annotationsBefore", annBefore);
+                result.addProperty("annotationsAfter", imageData.getHierarchy().getAnnotationObjects().size());
+                result.addProperty("detectionsBefore", detBefore);
+                result.addProperty("detectionsAfter", imageData.getHierarchy().getDetectionObjects().size());
+            }
+            return ToolResult.success(result);
+        }
+
+        private String resolveScript(JsonObject arguments) throws IOException {
+            if (arguments.has("script") && !arguments.get("script").isJsonNull())
+                return arguments.get("script").getAsString();
+            if (!arguments.has("path") || arguments.get("path").isJsonNull())
+                return null;
+            if (!registry.getConfig().isEnableFileAccess())
+                throw new IllegalStateException("File access is disabled; pass 'script' inline or set "
+                    + "QUPATH_MCP_ENABLE_FILE_ACCESS=true.");
+            Path p = Paths.get(arguments.get("path").getAsString());
+            if (!Files.exists(p))
+                throw new IllegalStateException("Workflow file not found: " + p.toAbsolutePath());
+            String content = Files.readString(p, StandardCharsets.UTF_8);
+            if (p.toString().toLowerCase().endsWith(".json")) {
+                JsonObject record = com.google.gson.JsonParser.parseString(content).getAsJsonObject();
+                if (record.has("script"))
+                    return record.get("script").getAsString();
+                throw new IllegalStateException("JSON workflow has no 'script' field to replay.");
+            }
+            return content;
         }
     }
 }

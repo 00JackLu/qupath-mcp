@@ -24,6 +24,7 @@ package qupath.lib.extension.mcp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.lib.extension.mcp.protocol.McpProtocolHandler;
+import qupath.lib.extension.mcp.tools.AnalysisTools;
 import qupath.lib.extension.mcp.tools.ImageTools;
 import qupath.lib.extension.mcp.tools.McpToolRegistry;
 import qupath.lib.extension.mcp.tools.ObjectTools;
@@ -118,11 +119,17 @@ public class McpServer {
         toolRegistry.register(new ProjectTools.OpenImage(toolRegistry));
         toolRegistry.register(new ProjectTools.SaveData(toolRegistry));
 
+        // Analysis tools
+        toolRegistry.register(new AnalysisTools.RunCellDetection(toolRegistry));
+        toolRegistry.register(new AnalysisTools.ExportMeasurements(toolRegistry));
+
         // Pipeline tools
         toolRegistry.register(new PipelineTools.ListPlugins(toolRegistry));
         toolRegistry.register(new PipelineTools.RunPlugin(toolRegistry));
         toolRegistry.register(new PipelineTools.GetWorkflow(toolRegistry));
         toolRegistry.register(new PipelineTools.SaveWorkflow(toolRegistry));
+        toolRegistry.register(new PipelineTools.ExportWorkflowJson(toolRegistry));
+        toolRegistry.register(new PipelineTools.ReplayWorkflow(toolRegistry));
     }
 
     /**
