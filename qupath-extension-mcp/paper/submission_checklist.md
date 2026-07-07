@@ -5,7 +5,7 @@ action (push / author input / live run) · ⬜ not started.
 
 | # | Item | Status | Where / note |
 |---|------|:------:|--------------|
-| 1 | GitHub repo public/accessible | 🟡 | Fork `origin` (00JackLu/qupath-mcp); commits held locally, **not pushed** per instruction. Push + make public to close. |
+| 1 | GitHub repo public/accessible | 🟡 | Pushed to `origin` (00JackLu/qupath-mcp), `main` synced. Make the repo **public** to fully close. |
 | 2 | License included | ✅ | GNU GPL v3 at repo root `LICENSE` (extension inherits it). |
 | 3 | README quick start | ✅ | `README.md` §1–3; `docs/quick_start.md`. |
 | 4 | Docs for all tools | ✅ | `docs/tools.md` (all 34 tools, R/W/D hints, plan-name mapping). |
