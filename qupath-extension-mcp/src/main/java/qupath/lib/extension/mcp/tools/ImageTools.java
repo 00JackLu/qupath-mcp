@@ -499,6 +499,13 @@ public class ImageTools {
 
         private static final String NAME = "qupath_capture_view";
 
+        /**
+         * Default hard cap on the encoded image size. Kept well under typical model prompt limits
+         * because some MCP clients count image payloads as base64 text (base64 inflates by ~4/3),
+         * which can otherwise blow past the context window for a full-resolution screenshot.
+         */
+        private static final int DEFAULT_MAX_BYTES = 350_000;
+
         private final McpToolRegistry registry;
 
         public CaptureView(McpToolRegistry registry) {
@@ -524,9 +531,26 @@ public class ImageTools {
             maxDimension.addProperty("type", "integer");
             maxDimension.addProperty("description", "Scale the longest side down to at most this many pixels " +
                 "(keeps the image small for vision models). Use 0 to disable scaling.");
-            maxDimension.addProperty("default", 1536);
+            maxDimension.addProperty("default", 1024);
             maxDimension.addProperty("minimum", 0);
             properties.add("maxDimension", maxDimension);
+
+            JsonObject format = new JsonObject();
+            format.addProperty("type", "string");
+            format.addProperty("description", "Image encoding. 'jpeg' is much smaller and is the default; " +
+                "use 'png' only if you need lossless output (produces far larger payloads for busy images).");
+            format.add("enum", GSON.toJsonTree(new String[]{"jpeg", "png"}));
+            format.addProperty("default", "jpeg");
+            properties.add("format", format);
+
+            JsonObject maxBytes = new JsonObject();
+            maxBytes.addProperty("type", "integer");
+            maxBytes.addProperty("description", "Hard upper bound on the encoded image size in bytes. If the " +
+                "capture is larger it is progressively downscaled/recompressed until it fits, so the result can " +
+                "never overflow the model's context. Default " + DEFAULT_MAX_BYTES + ".");
+            maxBytes.addProperty("default", DEFAULT_MAX_BYTES);
+            maxBytes.addProperty("minimum", 0);
+            properties.add("maxBytes", maxBytes);
 
             inputSchema.add("properties", properties);
             inputSchema.addProperty("additionalProperties", false);
@@ -551,7 +575,10 @@ public class ImageTools {
             }
 
             String typeArg = arguments.has("type") ? arguments.get("type").getAsString() : "viewer";
-            int maxDimension = arguments.has("maxDimension") ? arguments.get("maxDimension").getAsInt() : 1536;
+            int maxDimension = arguments.has("maxDimension") ? arguments.get("maxDimension").getAsInt() : 1024;
+            String format = arguments.has("format") ? arguments.get("format").getAsString().toLowerCase() : "jpeg";
+            boolean png = "png".equals(format);
+            int maxBytes = arguments.has("maxBytes") ? arguments.get("maxBytes").getAsInt() : DEFAULT_MAX_BYTES;
 
             GuiTools.SnapshotType snapshotType;
             switch (typeArg) {
@@ -573,6 +600,8 @@ public class ImageTools {
                 if (image == null) {
                     return ToolResult.error("Failed to capture view: null snapshot");
                 }
+                int originalW = image.getWidth();
+                int originalH = image.getHeight();
 
                 boolean scaled = false;
                 if (maxDimension > 0 && Math.max(image.getWidth(), image.getHeight()) > maxDimension) {
@@ -580,28 +609,83 @@ public class ImageTools {
                     scaled = true;
                 }
 
-                ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                if (!ImageIO.write(image, "PNG", baos) || baos.size() == 0) {
-                    return ToolResult.error("Failed to encode snapshot as PNG");
+                // Encode, and if the payload exceeds maxBytes, progressively shrink (and, for JPEG,
+                // lower quality) until it fits. This guarantees the result cannot overflow the context.
+                String mimeType = png ? "image/png" : "image/jpeg";
+                byte[] bytes = null;
+                double quality = 0.85;
+                for (int attempt = 0; attempt < 8; attempt++) {
+                    bytes = png ? encodePng(image) : encodeJpeg(image, quality);
+                    if (bytes == null) {
+                        return ToolResult.error("Failed to encode snapshot as " + (png ? "PNG" : "JPEG"));
+                    }
+                    if (maxBytes <= 0 || bytes.length <= maxBytes)
+                        break;
+                    // Too big: reduce quality first (JPEG only), then dimensions.
+                    if (!png && quality > 0.4) {
+                        quality -= 0.15;
+                    } else {
+                        int longest = Math.max(image.getWidth(), image.getHeight());
+                        if (longest <= 128)
+                            break; // give up shrinking; return whatever we have
+                        image = scaleToMax(image, (int) Math.round(longest * 0.75));
+                        scaled = true;
+                        if (!png)
+                            quality = 0.85; // reset quality after a resize
+                    }
                 }
-                String base64 = Base64.getEncoder().encodeToString(baos.toByteArray());
+
+                String base64 = Base64.getEncoder().encodeToString(bytes);
 
                 JsonObject meta = new JsonObject();
-                meta.addProperty("format", "png");
+                meta.addProperty("format", png ? "png" : "jpeg");
                 meta.addProperty("captured", typeArg);
                 meta.addProperty("width", image.getWidth());
                 meta.addProperty("height", image.getHeight());
+                meta.addProperty("originalWidth", originalW);
+                meta.addProperty("originalHeight", originalH);
                 meta.addProperty("scaled", scaled);
+                meta.addProperty("bytes", bytes.length);
 
                 List<ToolResult.Content> content = new ArrayList<>();
                 content.add(ToolResult.Content.text(GSON.toJson(meta)));
-                content.add(ToolResult.Content.image(base64, "image/png"));
+                content.add(ToolResult.Content.image(base64, mimeType));
                 return ToolResult.success(content);
 
             } catch (Exception e) {
                 logger.error("Failed to capture view", e);
                 return ToolResult.error("Failed to capture view: " + e.getMessage(), e);
             }
+        }
+
+        private static byte[] encodePng(BufferedImage image) throws java.io.IOException {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            if (!ImageIO.write(image, "PNG", baos) || baos.size() == 0)
+                return null;
+            return baos.toByteArray();
+        }
+
+        private static byte[] encodeJpeg(BufferedImage src, double quality) throws java.io.IOException {
+            // JPEG has no alpha channel; flatten onto an opaque RGB image first.
+            BufferedImage rgb = src;
+            if (src.getType() != BufferedImage.TYPE_INT_RGB) {
+                rgb = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_RGB);
+                Graphics2D g = rgb.createGraphics();
+                g.drawImage(src, 0, 0, null);
+                g.dispose();
+            }
+            javax.imageio.ImageWriter writer = ImageIO.getImageWritersByFormatName("jpeg").next();
+            javax.imageio.ImageWriteParam param = writer.getDefaultWriteParam();
+            param.setCompressionMode(javax.imageio.ImageWriteParam.MODE_EXPLICIT);
+            param.setCompressionQuality((float) Math.max(0.1, Math.min(1.0, quality)));
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            try (javax.imageio.stream.ImageOutputStream ios = ImageIO.createImageOutputStream(baos)) {
+                writer.setOutput(ios);
+                writer.write(null, new javax.imageio.IIOImage(rgb, null, null), param);
+            } finally {
+                writer.dispose();
+            }
+            return baos.size() == 0 ? null : baos.toByteArray();
         }
 
         private static BufferedImage scaleToMax(BufferedImage src, int maxDimension) {
