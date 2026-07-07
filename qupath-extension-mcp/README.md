@@ -169,6 +169,11 @@ size-bounded so it can't overflow the model's context: it defaults to JPEG at `m
 enforces a `maxBytes` budget (default 350 KB), progressively lowering quality then downscaling until it
 fits. Pass `format: "png"` with `maxBytes: 0` for a lossless full-resolution capture instead.
 
+Because it streams on-screen pixels to the agent, `qupath_capture_view` is **disabled by default**. Turn it
+on with **Extensions ▸ MCP Server ▸ Enable View Capture** (a checkbox, off by default) or
+`QUPATH_MCP_ENABLE_CAPTURE_VIEW=true`. While disabled, calling it returns a clear "view capture is disabled"
+error.
+
 See [`PROMPTS.md`](PROMPTS.md) for a cookbook of natural-language prompts that drive these tools.
 
 ## 5. Configuration
@@ -187,6 +192,7 @@ Resolved in order (later overrides earlier): a properties file → environment v
 | `QUPATH_MCP_ENABLE_SCRIPTS` | `qupath.mcp.enableScripts` | `true` | Allow `qupath_run_script` |
 | `QUPATH_MCP_ENABLE_FILE_ACCESS` | `qupath.mcp.enableFileAccess` | `true` | Allow file read/write tools |
 | `QUPATH_MCP_ENABLE_PLUGINS` | `qupath.mcp.enablePlugins` | `true` | Allow `qupath_run_plugin` |
+| `QUPATH_MCP_ENABLE_CAPTURE_VIEW` | `qupath.mcp.enableCaptureView` | `false` | Allow `qupath_capture_view` (also toggled from the menu) |
 
 Or a properties file (first match wins): `~/.qupath/mcp.properties`, `~/qupath-mcp.properties`, or
 `./qupath-mcp.properties`. Use keys **without** the prefix, e.g.:

@@ -111,10 +111,20 @@ public class McpExtension implements QuPathExtension {
             }
         });
 
+        // Runtime toggle for view/screen capture. Off by default because it streams on-screen
+        // pixels to the connected agent; the user opts in explicitly.
+        CheckMenuItem captureViewItem = new CheckMenuItem("Enable View Capture");
+        captureViewItem.setSelected(config.isEnableCaptureView());
+        captureViewItem.selectedProperty().addListener((v, was, isNow) -> {
+            config.setEnableCaptureView(isNow);
+            logger.info("View capture {}", isNow ? "enabled" : "disabled");
+        });
+
         MenuItem configItem = new MenuItem("Configuration...");
         configItem.setOnAction(e -> showConfigDialog());
 
-        menu.getItems().addAll(statusItem, new SeparatorMenuItem(), startItem, stopItem, new SeparatorMenuItem(), configItem);
+        menu.getItems().addAll(statusItem, new SeparatorMenuItem(), startItem, stopItem,
+                new SeparatorMenuItem(), captureViewItem, new SeparatorMenuItem(), configItem);
 
         return menu;
     }
@@ -151,6 +161,9 @@ public class McpExtension implements QuPathExtension {
 
         info.add(new Label("Script Execution:"), 0, row);
         info.add(new Label(config.isEnableScriptExecution() ? "Enabled" : "Disabled"), 1, row++);
+
+        info.add(new Label("View Capture:"), 0, row);
+        info.add(new Label(config.isEnableCaptureView() ? "Enabled" : "Disabled"), 1, row++);
 
         // Tools count
         if (server != null) {
@@ -191,8 +204,10 @@ public class McpExtension implements QuPathExtension {
             "• QUPATH_MCP_PORT - Server port (default: 9527)\n" +
             "• QUPATH_MCP_TRANSPORT - Transport mode: HTTP, STDIO, BOTH (default: HTTP)\n" +
             "• QUPATH_MCP_AUTO_START - Auto-start server: true/false (default: true)\n" +
-            "• QUPATH_MCP_ENABLE_SCRIPTS - Enable script execution: true/false (default: true)\n\n" +
-            "Set these before starting QuPath.\n" +
+            "• QUPATH_MCP_ENABLE_SCRIPTS - Enable script execution: true/false (default: true)\n" +
+            "• QUPATH_MCP_ENABLE_CAPTURE_VIEW - Enable view capture: true/false (default: false)\n\n" +
+            "View capture can also be toggled at runtime from the MCP Server menu.\n" +
+            "Set the rest before starting QuPath.\n" +
             "Example: export QUPATH_MCP_PORT=8080"
         );
         configInfo.setWrapText(true);

@@ -574,6 +574,14 @@ public class ImageTools {
                 return ToolResult.error("No QuPath instance available (headless mode)");
             }
 
+            // View capture is opt-in (it sends on-screen pixels to the agent). Toggle it via
+            // Extensions > MCP Server > "Enable View Capture", or QUPATH_MCP_ENABLE_CAPTURE_VIEW.
+            if (!registry.getConfig().isEnableCaptureView()) {
+                return ToolResult.error("View capture is disabled. Enable it in QuPath via "
+                    + "Extensions ▸ MCP Server ▸ \"Enable View Capture\" "
+                    + "(or set QUPATH_MCP_ENABLE_CAPTURE_VIEW=true).");
+            }
+
             String typeArg = arguments.has("type") ? arguments.get("type").getAsString() : "viewer";
             int maxDimension = arguments.has("maxDimension") ? arguments.get("maxDimension").getAsInt() : 1024;
             String format = arguments.has("format") ? arguments.get("format").getAsString().toLowerCase() : "jpeg";

@@ -66,6 +66,10 @@ public class McpConfiguration {
     private boolean enableScriptExecution = true;
     private boolean enableFileAccess = true;
     private boolean enablePluginExecution = true;
+    // View/screen capture is off by default: it sends pixels of whatever QuPath is showing (and,
+    // for 'window'/'full', potentially other on-screen content) to the connected agent, so it is
+    // opt-in. Toggle at runtime via the Extensions > MCP Server menu.
+    private boolean enableCaptureView = false;
 
     /**
      * Load configuration from system properties, environment variables, and config files.
@@ -122,6 +126,7 @@ public class McpConfiguration {
         getEnv("QUPATH_MCP_ENABLE_SCRIPTS").ifPresent(s -> setEnableScriptExecution(Boolean.parseBoolean(s)));
         getEnv("QUPATH_MCP_ENABLE_FILE_ACCESS").ifPresent(s -> setEnableFileAccess(Boolean.parseBoolean(s)));
         getEnv("QUPATH_MCP_ENABLE_PLUGINS").ifPresent(s -> setEnablePluginExecution(Boolean.parseBoolean(s)));
+        getEnv("QUPATH_MCP_ENABLE_CAPTURE_VIEW").ifPresent(s -> setEnableCaptureView(Boolean.parseBoolean(s)));
     }
 
     private void loadFromSystemProperties() {
@@ -135,6 +140,7 @@ public class McpConfiguration {
         getProp("qupath.mcp.enableScripts").ifPresent(s -> setEnableScriptExecution(Boolean.parseBoolean(s)));
         getProp("qupath.mcp.enableFileAccess").ifPresent(s -> setEnableFileAccess(Boolean.parseBoolean(s)));
         getProp("qupath.mcp.enablePlugins").ifPresent(s -> setEnablePluginExecution(Boolean.parseBoolean(s)));
+        getProp("qupath.mcp.enableCaptureView").ifPresent(s -> setEnableCaptureView(Boolean.parseBoolean(s)));
     }
 
     private void applyProperties(Properties props) {
@@ -147,6 +153,7 @@ public class McpConfiguration {
         getProperty(props, "enableScripts").ifPresent(s -> setEnableScriptExecution(Boolean.parseBoolean(s)));
         getProperty(props, "enableFileAccess").ifPresent(s -> setEnableFileAccess(Boolean.parseBoolean(s)));
         getProperty(props, "enablePlugins").ifPresent(s -> setEnablePluginExecution(Boolean.parseBoolean(s)));
+        getProperty(props, "enableCaptureView").ifPresent(s -> setEnableCaptureView(Boolean.parseBoolean(s)));
     }
 
     private java.util.Optional<String> getProp(String key) {
@@ -240,5 +247,13 @@ public class McpConfiguration {
 
     public void setEnablePluginExecution(boolean enablePluginExecution) {
         this.enablePluginExecution = enablePluginExecution;
+    }
+
+    public boolean isEnableCaptureView() {
+        return enableCaptureView;
+    }
+
+    public void setEnableCaptureView(boolean enableCaptureView) {
+        this.enableCaptureView = enableCaptureView;
     }
 }
