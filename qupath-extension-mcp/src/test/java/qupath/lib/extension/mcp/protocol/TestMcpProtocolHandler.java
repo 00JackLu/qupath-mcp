@@ -114,8 +114,8 @@ public class TestMcpProtocolHandler {
 
         JsonArray tools = response.getAsJsonObject("result").getAsJsonArray("tools");
         assertNotNull(tools, "tools list should not be null");
-        // 20 tools are registered by McpServer
-        assertEquals(20, tools.size(), "expected all 20 registered tools");
+        // tools registered by McpServer
+        assertEquals(25, tools.size(), "expected all 25 registered tools");
 
         // Each tool must have name, description, inputSchema
         for (JsonElement element : tools) {

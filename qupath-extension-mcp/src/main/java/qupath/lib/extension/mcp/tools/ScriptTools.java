@@ -497,4 +497,79 @@ public class ScriptTools {
             }
         }
     }
+
+    /**
+     * Compile-check a Groovy script without executing it.
+     */
+    public static class ValidateScript implements McpTool {
+
+        private static final String NAME = "qupath_validate_groovy_script";
+
+        private final McpToolRegistry registry;
+
+        public ValidateScript(McpToolRegistry registry) {
+            this.registry = registry;
+        }
+
+        @Override
+        public ToolDefinition getDefinition() {
+            JsonObject inputSchema = new JsonObject();
+            inputSchema.addProperty("type", "object");
+            JsonObject properties = new JsonObject();
+            JsonObject script = new JsonObject();
+            script.addProperty("type", "string");
+            script.addProperty("description", "Groovy script to compile-check.");
+            properties.add("script", script);
+            inputSchema.add("properties", properties);
+            JsonArray required = new JsonArray();
+            required.add("script");
+            inputSchema.add("required", required);
+            inputSchema.addProperty("additionalProperties", false);
+            return new ToolDefinition(
+                NAME,
+                "Validate a Groovy script by compiling it WITHOUT running it. Returns valid:true, or " +
+                "valid:false with the compiler error message and line/column. Catches syntax and compilation " +
+                "errors; note that Groovy is dynamic, so undefined methods/variables are only detected at run " +
+                "time, not here. Use before qupath_run_script to catch mistakes cheaply and safely.",
+                inputSchema,
+                null,
+                ToolDefinition.Annotations.readOnly()
+            );
+        }
+
+        @Override
+        public ToolResult execute(JsonObject arguments) {
+            if (!arguments.has("script") || arguments.get("script").isJsonNull())
+                return ToolResult.error("Missing required parameter 'script'.");
+            String scriptText = arguments.get("script").getAsString();
+            try {
+                javax.script.ScriptEngine engine =
+                        new javax.script.ScriptEngineManager(getClass().getClassLoader()).getEngineByName("groovy");
+                if (engine == null)
+                    return ToolResult.error("Groovy engine not available for validation");
+
+                JsonObject result = new JsonObject();
+                if (engine instanceof javax.script.Compilable compilable) {
+                    try {
+                        compilable.compile(scriptText);
+                        result.addProperty("valid", true);
+                    } catch (javax.script.ScriptException se) {
+                        result.addProperty("valid", false);
+                        result.addProperty("error", se.getMessage());
+                        if (se.getLineNumber() >= 0)
+                            result.addProperty("line", se.getLineNumber());
+                        if (se.getColumnNumber() >= 0)
+                            result.addProperty("column", se.getColumnNumber());
+                    }
+                } else {
+                    result.addProperty("valid", true);
+                    result.addProperty("note", "Groovy engine is not Compilable; syntax was not verified.");
+                }
+                return ToolResult.success(result);
+            } catch (Exception e) {
+                logger.error("Failed to validate script", e);
+                return ToolResult.error("Failed to validate script: " + e.getMessage(), e);
+            }
+        }
+    }
 }

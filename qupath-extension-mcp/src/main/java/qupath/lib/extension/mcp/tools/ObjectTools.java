@@ -868,4 +868,236 @@ public class ObjectTools {
         }
         return null;
     }
+
+    /** Compact JSON description of a single object (id, type, class, ROI bounds/area). */
+    private static JsonObject describeObject(PathObject obj) {
+        JsonObject o = new JsonObject();
+        o.addProperty("id", obj.getID().toString());
+        String type = obj.isCell() ? "cell"
+                : obj.isDetection() ? "detection"
+                : obj.isAnnotation() ? "annotation"
+                : obj.isTMACore() ? "tmaCore"
+                : obj.getClass().getSimpleName();
+        o.addProperty("type", type);
+        o.addProperty("classification", obj.getPathClass() != null ? obj.getPathClass().toString() : null);
+        if (obj.getName() != null)
+            o.addProperty("name", obj.getName());
+        var roi = obj.getROI();
+        if (roi != null) {
+            o.addProperty("roiType", roi.getRoiName());
+            JsonObject b = new JsonObject();
+            b.addProperty("x", roi.getBoundsX());
+            b.addProperty("y", roi.getBoundsY());
+            b.addProperty("width", roi.getBoundsWidth());
+            b.addProperty("height", roi.getBoundsHeight());
+            o.add("bounds", b);
+            o.addProperty("areaPixels", roi.getArea());
+        }
+        return o;
+    }
+
+    /**
+     * Summarize the currently selected object(s) in the hierarchy.
+     */
+    public static class GetSelectionInfo implements McpTool {
+
+        private static final String NAME = "qupath_get_selection_info";
+
+        private final McpToolRegistry registry;
+
+        public GetSelectionInfo(McpToolRegistry registry) {
+            this.registry = registry;
+        }
+
+        @Override
+        public ToolDefinition getDefinition() {
+            JsonObject inputSchema = new JsonObject();
+            inputSchema.addProperty("type", "object");
+            inputSchema.add("properties", new JsonObject());
+            inputSchema.addProperty("additionalProperties", false);
+            return new ToolDefinition(
+                NAME,
+                "Summarize the currently selected object(s): count, the primary selection, and each selected " +
+                "object's id, type, classification and ROI bounds/area. Use this before acting so operations " +
+                "target what the user has selected.",
+                inputSchema,
+                null,
+                ToolDefinition.Annotations.readOnly()
+            );
+        }
+
+        @Override
+        public ToolResult execute(JsonObject arguments) {
+            QuPathGUI qupath = registry.getQuPath();
+            if (qupath == null)
+                return ToolResult.error("No QuPath instance available (headless mode)");
+            ImageData<?> imageData = qupath.getImageData();
+            if (imageData == null)
+                return ToolResult.error("No image is currently open");
+            try {
+                var selection = imageData.getHierarchy().getSelectionModel();
+                java.util.Set<PathObject> selected = selection.getSelectedObjects();
+                JsonObject result = new JsonObject();
+                result.addProperty("count", selected.size());
+                PathObject primary = selection.getSelectedObject();
+                result.add("primary", primary != null ? describeObject(primary) : null);
+                JsonArray arr = new JsonArray();
+                int limit = 200;
+                int i = 0;
+                for (PathObject obj : selected) {
+                    if (i++ >= limit) break;
+                    arr.add(describeObject(obj));
+                }
+                result.add("objects", arr);
+                if (selected.size() > limit)
+                    result.addProperty("truncated", true);
+                return ToolResult.success(result);
+            } catch (Exception e) {
+                logger.error("Failed to get selection info", e);
+                return ToolResult.error("Failed to get selection info: " + e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * Summarize annotations grouped by classification (count and total area).
+     */
+    public static class GetAnnotationSummary implements McpTool {
+
+        private static final String NAME = "qupath_get_annotation_summary";
+
+        private final McpToolRegistry registry;
+
+        public GetAnnotationSummary(McpToolRegistry registry) {
+            this.registry = registry;
+        }
+
+        @Override
+        public ToolDefinition getDefinition() {
+            JsonObject inputSchema = new JsonObject();
+            inputSchema.addProperty("type", "object");
+            inputSchema.add("properties", new JsonObject());
+            inputSchema.addProperty("additionalProperties", false);
+            return new ToolDefinition(
+                NAME,
+                "Summarize the image's annotations grouped by classification: total count, and per class the " +
+                "count and total area (in pixels, plus µm² when the image is calibrated). A quick way to " +
+                "understand the annotation hierarchy without listing every object.",
+                inputSchema,
+                null,
+                ToolDefinition.Annotations.readOnly()
+            );
+        }
+
+        @Override
+        public ToolResult execute(JsonObject arguments) {
+            QuPathGUI qupath = registry.getQuPath();
+            if (qupath == null)
+                return ToolResult.error("No QuPath instance available (headless mode)");
+            ImageData<?> imageData = qupath.getImageData();
+            if (imageData == null)
+                return ToolResult.error("No image is currently open");
+            try {
+                var cal = imageData.getServer().getPixelCalibration();
+                double pxAreaMicrons = cal.hasPixelSizeMicrons()
+                        ? cal.getPixelWidthMicrons() * cal.getPixelHeightMicrons() : Double.NaN;
+
+                var annotations = imageData.getHierarchy().getAnnotationObjects();
+                java.util.Map<String, long[]> countByClass = new java.util.LinkedHashMap<>();
+                java.util.Map<String, Double> areaByClass = new java.util.LinkedHashMap<>();
+                for (PathObject a : annotations) {
+                    String cls = a.getPathClass() != null ? a.getPathClass().toString() : "Unclassified";
+                    countByClass.computeIfAbsent(cls, k -> new long[1])[0]++;
+                    double area = a.getROI() != null ? a.getROI().getArea() : 0;
+                    areaByClass.merge(cls, area, Double::sum);
+                }
+
+                JsonObject result = new JsonObject();
+                result.addProperty("totalAnnotations", annotations.size());
+                result.addProperty("calibrated", cal.hasPixelSizeMicrons());
+                JsonArray classes = new JsonArray();
+                for (String cls : countByClass.keySet()) {
+                    JsonObject c = new JsonObject();
+                    c.addProperty("classification", cls);
+                    c.addProperty("count", countByClass.get(cls)[0]);
+                    double areaPixels = areaByClass.getOrDefault(cls, 0.0);
+                    c.addProperty("totalAreaPixels", areaPixels);
+                    if (!Double.isNaN(pxAreaMicrons))
+                        c.addProperty("totalAreaMicrons2", areaPixels * pxAreaMicrons);
+                    classes.add(c);
+                }
+                result.add("byClass", classes);
+                return ToolResult.success(result);
+            } catch (Exception e) {
+                logger.error("Failed to summarize annotations", e);
+                return ToolResult.error("Failed to summarize annotations: " + e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * Summarize detections/cells grouped by classification.
+     */
+    public static class GetDetectionSummary implements McpTool {
+
+        private static final String NAME = "qupath_get_detection_summary";
+
+        private final McpToolRegistry registry;
+
+        public GetDetectionSummary(McpToolRegistry registry) {
+            this.registry = registry;
+        }
+
+        @Override
+        public ToolDefinition getDefinition() {
+            JsonObject inputSchema = new JsonObject();
+            inputSchema.addProperty("type", "object");
+            inputSchema.add("properties", new JsonObject());
+            inputSchema.addProperty("additionalProperties", false);
+            return new ToolDefinition(
+                NAME,
+                "Summarize the image's detections: total detection count, how many are cells, and the count " +
+                "per classification. Useful to confirm the result of a cell-detection or classification run.",
+                inputSchema,
+                null,
+                ToolDefinition.Annotations.readOnly()
+            );
+        }
+
+        @Override
+        public ToolResult execute(JsonObject arguments) {
+            QuPathGUI qupath = registry.getQuPath();
+            if (qupath == null)
+                return ToolResult.error("No QuPath instance available (headless mode)");
+            ImageData<?> imageData = qupath.getImageData();
+            if (imageData == null)
+                return ToolResult.error("No image is currently open");
+            try {
+                var detections = imageData.getHierarchy().getDetectionObjects();
+                long cells = 0;
+                java.util.Map<String, long[]> countByClass = new java.util.LinkedHashMap<>();
+                for (PathObject d : detections) {
+                    if (d.isCell())
+                        cells++;
+                    String cls = d.getPathClass() != null ? d.getPathClass().toString() : "Unclassified";
+                    countByClass.computeIfAbsent(cls, k -> new long[1])[0]++;
+                }
+                JsonObject result = new JsonObject();
+                result.addProperty("totalDetections", detections.size());
+                result.addProperty("cells", cells);
+                JsonArray classes = new JsonArray();
+                for (String cls : countByClass.keySet()) {
+                    JsonObject c = new JsonObject();
+                    c.addProperty("classification", cls);
+                    c.addProperty("count", countByClass.get(cls)[0]);
+                    classes.add(c);
+                }
+                result.add("byClass", classes);
+                return ToolResult.success(result);
+            } catch (Exception e) {
+                logger.error("Failed to summarize detections", e);
+                return ToolResult.error("Failed to summarize detections: " + e.getMessage(), e);
+            }
+        }
+    }
 }

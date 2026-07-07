@@ -711,4 +711,87 @@ public class ImageTools {
             return dst;
         }
     }
+
+    /**
+     * Report the current viewer state: displayed region, zoom, position, channels and overlay flags.
+     * This grounds an agent's actions in what the user is actually looking at.
+     */
+    public static class GetViewerState implements McpTool {
+
+        private static final String NAME = "qupath_get_viewer_state";
+
+        private final McpToolRegistry registry;
+
+        public GetViewerState(McpToolRegistry registry) {
+            this.registry = registry;
+        }
+
+        @Override
+        public ToolDefinition getDefinition() {
+            JsonObject inputSchema = new JsonObject();
+            inputSchema.addProperty("type", "object");
+            inputSchema.add("properties", new JsonObject());
+            inputSchema.addProperty("additionalProperties", false);
+            return new ToolDefinition(
+                NAME,
+                "Get the current viewer state: the region of the image currently displayed (x, y, width, " +
+                "height in full-resolution pixels), the zoom (downsample) and magnification, the z/t position, " +
+                "the channels currently shown, and overlay display flags. Use this to ground actions in what " +
+                "the user is actually looking at.",
+                inputSchema,
+                null,
+                ToolDefinition.Annotations.readOnly()
+            );
+        }
+
+        @Override
+        public ToolResult execute(JsonObject arguments) {
+            QuPathGUI qupath = registry.getQuPath();
+            if (qupath == null) {
+                return ToolResult.error("No QuPath instance available (headless mode)");
+            }
+            var viewer = qupath.getViewer();
+            if (viewer == null || viewer.getImageData() == null) {
+                return ToolResult.error("No image is currently open in the viewer");
+            }
+            try {
+                JsonObject result = new JsonObject();
+                result.addProperty("downsample", viewer.getDownsampleFactor());
+                result.addProperty("magnification", viewer.getMagnification());
+                result.addProperty("zPosition", viewer.getZPosition());
+                result.addProperty("tPosition", viewer.getTPosition());
+
+                java.awt.Rectangle bounds = viewer.getDisplayedRegionShape().getBounds();
+                JsonObject region = new JsonObject();
+                region.addProperty("x", bounds.x);
+                region.addProperty("y", bounds.y);
+                region.addProperty("width", bounds.width);
+                region.addProperty("height", bounds.height);
+                result.add("displayedRegion", region);
+
+                var display = viewer.getImageDisplay();
+                JsonArray shown = new JsonArray();
+                if (display != null) {
+                    for (qupath.lib.display.ChannelDisplayInfo c : display.selectedChannels())
+                        shown.add(c.getName());
+                    result.addProperty("channelsAvailable", display.availableChannels().size());
+                }
+                result.add("displayedChannels", shown);
+
+                var ov = viewer.getOverlayOptions();
+                JsonObject overlay = new JsonObject();
+                overlay.addProperty("showAnnotations", ov.getShowAnnotations());
+                overlay.addProperty("showDetections", ov.getShowDetections());
+                overlay.addProperty("fillDetections", ov.getFillDetections());
+                overlay.addProperty("showNames", ov.getShowNames());
+                overlay.addProperty("showConnections", ov.getShowConnections());
+                result.add("overlayOptions", overlay);
+
+                return ToolResult.success(result);
+            } catch (Exception e) {
+                logger.error("Failed to get viewer state", e);
+                return ToolResult.error("Failed to get viewer state: " + e.getMessage(), e);
+            }
+        }
+    }
 }

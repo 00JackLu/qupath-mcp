@@ -112,8 +112,8 @@ public class TestHttpTransport {
 
         assertEquals(200, response.statusCode());
         JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
-        assertEquals(20, json.getAsJsonObject("result").getAsJsonArray("tools").size(),
-                "tools/list over HTTP should advertise all 20 tools");
+        assertEquals(25, json.getAsJsonObject("result").getAsJsonArray("tools").size(),
+                "tools/list over HTTP should advertise all 25 tools");
     }
 
     @Test

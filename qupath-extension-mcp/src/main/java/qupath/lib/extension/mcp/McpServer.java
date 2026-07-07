@@ -94,6 +94,7 @@ public class McpServer {
         toolRegistry.register(new ImageTools.GetImageMetadata(toolRegistry));
         toolRegistry.register(new ImageTools.ReadRegion(toolRegistry));
         toolRegistry.register(new ImageTools.CaptureView(toolRegistry));
+        toolRegistry.register(new ImageTools.GetViewerState(toolRegistry));
 
         // Object tools
         toolRegistry.register(new ObjectTools.ListObjects(toolRegistry));
@@ -102,10 +103,14 @@ public class McpServer {
         toolRegistry.register(new ObjectTools.DeleteObjects(toolRegistry));
         toolRegistry.register(new ObjectTools.ImportGeoJson(toolRegistry));
         toolRegistry.register(new ObjectTools.ExportGeoJson(toolRegistry));
+        toolRegistry.register(new ObjectTools.GetSelectionInfo(toolRegistry));
+        toolRegistry.register(new ObjectTools.GetAnnotationSummary(toolRegistry));
+        toolRegistry.register(new ObjectTools.GetDetectionSummary(toolRegistry));
 
         // Script tools
         toolRegistry.register(new ScriptTools.RunScript(toolRegistry));
         toolRegistry.register(new ScriptTools.ListScripts(toolRegistry));
+        toolRegistry.register(new ScriptTools.ValidateScript(toolRegistry));
 
         // Project tools
         toolRegistry.register(new ProjectTools.GetProjectInfo(toolRegistry));
