@@ -83,7 +83,7 @@ surface, first-class detection/measurement tools (`get_detection_summary`, `meas
 | 3 | Three demonstration workflows | complete |
 | 4 | Small benchmark (20–30 task cards) | cards complete; live runs pending |
 | 5 | Baselines (optional) | pending |
-| 6 | Figures + tables | pending |
+| 6 | Figures + tables | Fig 1/2 + Table 1 done; Table 2 pending live runs |
 | 7 | Application Note draft | pending |
 | 8 | Submission-readiness checklist | pending |
 
