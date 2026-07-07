@@ -8,11 +8,12 @@
 
 ## About the sample CSV
 
-[`measurements_sample.csv`](measurements_sample.csv) is a **representative excerpt** — the real
-structural QuPath columns (centroid, nucleus/cell area & shape) plus four of the seven intensity
-channels, with five illustrative rows. The full table (all 7 channels' nucleus/cell/cytoplasm
-statistics = 134 columns, one row per cell = 5266 rows) is produced by the tool at run time; only an
-abridged version is committed here to keep the repository small.
+[`measurements_sample.csv`](measurements_sample.csv) is a **representative excerpt** using the **real
+column names** exported by the tool (structural columns — centroid, nucleus area/perimeter/circularity
+— plus a few of the per-channel intensity columns), with five illustrative rows. The full table (all
+8 channels' nucleus/cell mean/sum/std/max/min/range statistics = 134 columns, one row per cell = 5266
+rows) is produced by `qupath_export_measurements` at run time; only an abridged version is committed
+here to keep the repository small.
 
 ## Success criteria
 

@@ -2,8 +2,9 @@
 
 The agent produces a state summary equivalent to:
 
-- **Image:** LuCa-7color multiplex fluorescence, 1868 × 1400 px, 7 channels, ~0.498 µm/px,
-  image type FLUORESCENCE.
+- **Image:** LuCa-7color multiplex fluorescence, 1868 × 1400 px, **8 channels** (7 markers —
+  PDL1, CD8, FoxP3, CD68, PD1, CK, DAPI — plus autofluorescence), ~0.498 µm/px, image type
+  Fluorescence.
 - **Viewer:** whole image in view at downsample 1.0; annotation and detection overlays on.
 - **Selection:** 1 annotation selected — a `Tumor` rectangle (≈648,566 µm²).
 - **Annotations:** 1 total, all `Tumor`.
@@ -11,7 +12,7 @@ The agent produces a state summary equivalent to:
 
 ## Success criteria
 
-- [x] Correct image identified (name, dimensions, channel count, pixel size).
+- [x] Correct image identified (name, dimensions, channel count = 8, pixel size).
 - [x] Correct annotation count and class.
 - [x] Selection correctly reported.
 - [x] Detection count reported (5266).

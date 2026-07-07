@@ -1,5 +1,5 @@
 {"dir":"request","body":{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"qupath_get_image_info","arguments":{}}}}
-{"dir":"response","salient":{"name":"LuCa-7color_[13860,52919]_1x1component_data.tif - resolution #1","width":1868,"height":1400,"channels":7,"pixelType":"float32","pixelSizeMicrons":0.4977,"imageType":"FLUORESCENCE"}}
+{"dir":"response","salient":{"name":"LuCa-7color_[13860,52919]_1x1component_data.tif","width":1868,"height":1400,"nChannels":8,"pixelType":"FLOAT32","pixelSizeMicrons":0.498,"imageType":"Fluorescence","channels":["PDL1 (Opal 520)","CD8 (Opal 540)","FoxP3 (Opal 570)","CD68 (Opal 620)","PD1 (Opal 650)","CK (Opal 690)","DAPI","Autofluorescence"]}}
 {"dir":"request","body":{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"qupath_get_viewer_state","arguments":{}}}}
 {"dir":"response","salient":{"imageOpen":true,"downsample":1.0,"magnification":null,"region":{"x":0,"y":0,"width":1868,"height":1400},"z":0,"t":0,"channelsShown":7,"overlay":{"showAnnotations":true,"showDetections":true}}}
 {"dir":"request","body":{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"qupath_get_selection_info","arguments":{}}}}

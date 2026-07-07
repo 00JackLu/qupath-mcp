@@ -14,8 +14,9 @@ success criteria (including the replay check for workflow 3).
 ## Input data
 
 All traces were run against QuPath's public **LuCa-7color** multiplex immunofluorescence sample
-(`LuCa-7color_[13860,52919]_1x1component_data.tif`), a 7-channel component image
-(DAPI + six markers). It ships as a QuPath sample image, so the workflows are reproducible by anyone.
+(`LuCa-7color_[13860,52919]_1x1component_data.tif`), an **8-channel** component image (seven markers —
+PDL1, CD8, FoxP3, CD68, PD1, CK, DAPI — plus autofluorescence). It ships as a QuPath sample image, so
+the workflows are reproducible by anyone.
 
 ## How to reproduce
 

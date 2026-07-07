@@ -84,9 +84,9 @@ public class ObjectTools {
 
             JsonObject type = new JsonObject();
             type.addProperty("type", "string");
-            type.addProperty("description", "Filter by object type");
-            type.addProperty("enum", GSON.toJson(new String[]{"ALL", "ANNOTATIONS", "DETECTIONS", "CELLS", "TILES", "TMA"}));
-            type.addProperty("default", "ALL");
+            type.addProperty("description", "Filter by object type (case-insensitive; singular or plural accepted)");
+            type.addProperty("enum", GSON.toJson(new String[]{"all", "annotation", "detection", "cell", "tile", "tma"}));
+            type.addProperty("default", "all");
             properties.add("type", type);
 
             JsonObject filter = new JsonObject();
@@ -141,27 +141,36 @@ public class ObjectTools {
             int limit = arguments.has("limit") ? Math.min(arguments.get("limit").getAsInt(), 1000) : 100;
             int offset = arguments.has("offset") ? arguments.get("offset").getAsInt() : 0;
 
-            // Get objects by type
+            // Normalize the type filter so both the documented enum values ("ANNOTATIONS") and the
+            // natural singular/lower-case forms an agent is likely to pass ("annotation") are accepted.
+            String normalizedType = typeFilter.trim().toUpperCase();
+            if (normalizedType.endsWith("S"))
+                normalizedType = normalizedType.substring(0, normalizedType.length() - 1);
+
+            // Get objects by type (copied into a mutable list so we can drop the root object)
             Collection<PathObject> objects;
-            switch (typeFilter) {
-                case "ANNOTATIONS":
-                    objects = hierarchy.getObjects(null, PathAnnotationObject.class);
+            switch (normalizedType) {
+                case "ANNOTATION":
+                    objects = new ArrayList<>(hierarchy.getObjects(null, PathAnnotationObject.class));
                     break;
-                case "DETECTIONS":
-                    objects = hierarchy.getObjects(null, PathDetectionObject.class);
+                case "DETECTION":
+                    objects = new ArrayList<>(hierarchy.getObjects(null, PathDetectionObject.class));
                     break;
-                case "CELLS":
-                    objects = hierarchy.getObjects(null, PathCellObject.class);
+                case "CELL":
+                    objects = new ArrayList<>(hierarchy.getObjects(null, PathCellObject.class));
                     break;
-                case "TILES":
-                    objects = hierarchy.getObjects(null, PathTileObject.class);
+                case "TILE":
+                    objects = new ArrayList<>(hierarchy.getObjects(null, PathTileObject.class));
                     break;
                 case "TMA":
-                    objects = hierarchy.getObjects(null, TMACoreObject.class);
+                    objects = new ArrayList<>(hierarchy.getObjects(null, TMACoreObject.class));
                     break;
                 default:
-                    objects = hierarchy.getObjects(null, PathObject.class);
+                    objects = new ArrayList<>(hierarchy.getObjects(null, PathObject.class));
             }
+
+            // The root object is not a user object and should never appear in a listing.
+            objects.remove(hierarchy.getRootObject());
 
             // Filter by classification if specified
             if (classFilter != null && !classFilter.isEmpty()) {

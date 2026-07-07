@@ -113,9 +113,9 @@ workflows with screenshots and JSON-RPC traces, and the benchmark.
 
 ## 4 Use cases and validation
 
-We validated QuPath-MCP on QuPath's public LuCa-7color multiplex immunofluorescence sample (a 7-channel
-component image). Three end-to-end workflows (Fig. 2; full artifacts in the repository) exercise the
-inspect → execute → verify → reproduce pattern:
+We validated QuPath-MCP on QuPath's public LuCa-7color multiplex immunofluorescence sample (an
+8-channel component image: seven markers plus autofluorescence). Three end-to-end workflows (Fig. 2;
+full artifacts in the repository) exercise the inspect → execute → verify → reproduce pattern:
 
 1. **State inspection** — an agent summarises the image, viewer, selection, and annotation/detection
    hierarchy using only read-only tools, performing no writes.
@@ -134,7 +134,13 @@ side-effect hints change agent behaviour relative to a bare scripting interface.
 (success, tool-call count, execution error, invalid operation, output-file existence, replay success)
 aggregates into Table 2.
 
-*[Table 2 to be populated from live benchmark runs: model, MCP client, QuPath version, date.]*
+In an initial run (Claude Opus 4.8 driving the live tools; Table 2), all 26 executable cards succeeded
+(one batch/project card was blocked by a test-harness limitation in opening a multi-image project
+programmatically, not a tool defect). Cell detection reproducibly yielded 5266 cells at threshold 1.0
+and 4769 at 2.0; export produced a 5266 × 134 measurement table; and replay from a cleared state
+reproduced one annotation and 5266 detections with no model in the loop. The benchmark also surfaced a
+minor defect — `list_objects` including the root image object when listing annotations — illustrating
+its diagnostic value.
 
 ## 5 Discussion
 

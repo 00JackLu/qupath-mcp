@@ -1,0 +1,28 @@
+task_id,task_category,model,mcp_client,success_or_failure,number_of_tool_calls,execution_error,invalid_operation,output_file_exists,replay_success,notes
+ST-01,state-inspection,claude-opus-4-8,session-driven (curl),success,1,no,no,n/a,n/a,image identified: 1868x1400 8ch 0.498um Fluorescence
+ST-02,state-inspection,claude-opus-4-8,session-driven (curl),success,1,no,no,n/a,n/a,viewer region+downsample+8 channels reported
+ST-03,state-inspection,claude-opus-4-8,session-driven (curl),success,1,no,no,n/a,n/a,1 Tumor annotation 648566 um2
+ST-04,state-inspection,claude-opus-4-8,session-driven (curl),success,1,no,no,n/a,n/a,selection correctly reported
+ST-05,state-inspection,claude-opus-4-8,session-driven (curl),success,5,no,no,n/a,n/a,all five state tools consistent
+AN-01,annotation,claude-opus-4-8,session-driven (curl),success,1,no,no,n/a,n/a,listed Tumor; BUG found+fixed: root Image object leaked via type-filter fallthrough (see findings)
+AN-02,annotation,claude-opus-4-8,session-driven (curl),success,2,recovered,no,n/a,n/a,1st call wrong param; clear error -> retry with coordinates[] ok
+AN-03,annotation,claude-opus-4-8,session-driven (curl),success,1,no,no,n/a,n/a,selected the Tumor annotation by class
+AN-04,annotation,claude-opus-4-8,session-driven (curl),success,2,recovered,no,n/a,n/a,1st call needed applyToSelection; retry set Stroma ok
+AN-05,annotation,claude-opus-4-8,session-driven (curl),success,1,no,no,n/a,n/a,exported 2 annotations to GeoJSON
+AN-06,annotation,claude-opus-4-8,session-driven (curl),success,3,recovered,no,n/a,n/a,inspected first; deleted only scratch rect (objectIds); real ann survived
+CD-01,cell-detection,claude-opus-4-8,session-driven (curl),success,1,no,no,n/a,n/a,DAPI detection 0->5266
+CD-02,cell-detection,claude-opus-4-8,session-driven (curl),success,1,no,no,n/a,n/a,5266 cells Unclassified
+CD-03,cell-detection,claude-opus-4-8,session-driven (curl),success,3,no,no,n/a,n/a,before 0 after 5266 increase stated
+CD-04,cell-detection,claude-opus-4-8,session-driven (curl),success,1,no,no,n/a,n/a,threshold 2.0 -> 4769 (fewer, correct direction)
+CD-05,cell-detection,claude-opus-4-8,session-driven (curl),success,1,no,no,n/a,n/a,shape measurements added (Area um2, Circularity, etc.)
+ME-01,measurement-export,claude-opus-4-8,session-driven (curl),success,1,no,no,yes,n/a,cell CSV 5266 rows x 134 cols
+ME-02,measurement-export,claude-opus-4-8,session-driven (curl),success,1,no,no,yes,n/a,134 columns with real names reported
+ME-03,measurement-export,claude-opus-4-8,session-driven (curl),success,1,no,no,yes,n/a,annotation CSV 1 row
+ME-04,measurement-export,claude-opus-4-8,session-driven (curl),success,1,no,no,yes,n/a,file exists 5.2MB parses 5267 lines 134 cols
+ME-05,measurement-export,claude-opus-4-8,session-driven (curl),success,1,no,no,yes,n/a,mean DAPI nucleus intensity 5.79 over 5266 cells
+WR-01,workflow-replay,claude-opus-4-8,session-driven (curl),success,3,no,no,n/a,n/a,recorded 1 step (detection); run_script annotation not auto-recorded (documented caveat validated)
+WR-02,workflow-replay,claude-opus-4-8,session-driven (curl),success,1,no,no,n/a,n/a,JSON has version+image+stepCount+params+script
+WR-03,workflow-replay,claude-opus-4-8,session-driven (curl),success,1,no,no,yes,n/a,saved complete workflow via content to ~/qupath_workflow (no project open)
+WR-04,workflow-replay,claude-opus-4-8,session-driven (curl),success,3,no,no,n/a,yes,cleared 0/0 -> replay reproduced 1 annotation + 5266 detections, no LLM
+BP-01,batch-project,claude-opus-4-8,session-driven (curl),blocked,6,no,no,n/a,n/a,harness limit: programmatic setProject did not stick in session; open_image/list_images individually valid
+BP-02,batch-project,claude-opus-4-8,session-driven (curl),success,2,no,no,yes,n/a,save_workflow validated + headless cmd 'qupath script wf.groovy -p project.qpproj'; project-batch not executed live
