@@ -23,12 +23,15 @@ package qupath.lib.extension.mcp.tools;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.lib.extension.mcp.protocol.models.ToolDefinition;
 import qupath.lib.extension.mcp.protocol.models.ToolResult;
 import qupath.lib.extension.mcp.util.ThreadUtils;
 import qupath.lib.gui.QuPathGUI;
+import qupath.lib.gui.logging.LogManager;
+import qupath.lib.gui.logging.TextAppendable;
 import qupath.lib.gui.scripting.QPEx;
 import qupath.lib.gui.scripting.languages.GroovyLanguage;
 import qupath.lib.images.ImageData;
@@ -39,14 +42,18 @@ import qupath.lib.scripting.languages.ScriptLanguage;
 
 import javax.script.ScriptException;
 import java.io.File;
+import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -64,6 +71,9 @@ public class ScriptTools {
     public static class RunScript implements McpTool {
 
         private static final String NAME = "qupath_run_script";
+
+        /** Upper bound on captured log text, to avoid unbounded memory use for chatty scripts. */
+        private static final int MAX_LOG_CAPTURE = 256 * 1024;
 
         private final McpToolRegistry registry;
 
@@ -112,6 +122,11 @@ public class ScriptTools {
                 "Execute a Groovy script in the QuPath context. " +
                 "The script has access to QPEx methods like selectObjects(), runPlugin(), etc. " +
                 "Returns the script output and any results. " +
+                "On failure the response includes 'error', 'errorType', 'rootCause'/'causeChain' and a " +
+                "full 'stackTrace'. Note that some QuPath calls (notably runPlugin) catch their own " +
+                "exceptions and return false instead of throwing; when that happens the script still " +
+                "reports success:true, but the underlying error is surfaced in a 'logs' field along with " +
+                "a 'warning' — always check those to confirm an operation actually did what you expected. " +
                 "WARNING: Scripts can modify data. Use with caution.",
                 inputSchema,
                 null,
@@ -136,6 +151,24 @@ public class ScriptTools {
             // Capture output
             StringWriter outputWriter = new StringWriter();
             StringWriter errorWriter = new StringWriter();
+
+            // Capture WARN/ERROR log events emitted while the script runs. This is important
+            // because some QuPath operations swallow their exceptions: notably QP.runPlugin()
+            // catches any failure, logs it as "Unable to run plugin ...", and returns false
+            // instead of throwing. Without this, such failures would leave no trace in the tool
+            // response (the script "succeeds" with empty output) and only appear in QuPath's log.
+            StringBuffer logBuffer = new StringBuffer();
+            TextAppendable logCapture = text -> {
+                if (text != null && logBuffer.length() < MAX_LOG_CAPTURE)
+                    logBuffer.append(text);
+            };
+            boolean logCaptureRegistered = false;
+            try {
+                LogManager.addTextAppendableFX(logCapture);
+                logCaptureRegistered = true;
+            } catch (Throwable t) {
+                logger.debug("Could not register log capture for script execution: {}", t.getMessage());
+            }
 
             try {
                 // Execute script in background thread with timeout
@@ -192,26 +225,153 @@ public class ScriptTools {
                     }
                 }
 
+                // Surface anything that was only logged (e.g. a plugin that failed silently).
+                attachProblemLogs(response, logBuffer, true);
+
                 return ToolResult.success(response);
 
             } catch (TimeoutException e) {
-                logger.error("Script execution timed out", e);
-                return ToolResult.error("Script execution timed out after " + timeoutMs + "ms");
-            } catch (ExecutionException e) {
-                Throwable cause = e.getCause();
-                logger.error("Script execution failed", cause);
                 JsonObject response = new JsonObject();
                 response.addProperty("success", false);
-                response.addProperty("error", cause != null ? cause.getMessage() : e.getMessage());
+                response.addProperty("error", "Script execution timed out after " + timeoutMs + "ms");
+                response.addProperty("errorType", e.getClass().getName());
+                response.addProperty("output", outputWriter.toString());
+                // Read logs before we log server-side, so our own error line isn't echoed back.
+                attachProblemLogs(response, logBuffer, false);
+                logger.error("Script execution timed out", e);
+                return ToolResult.success(response);
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                JsonObject response = new JsonObject();
+                response.addProperty("success", false);
+                appendErrorDetails(response, cause);
                 response.addProperty("output", outputWriter.toString());
                 if (errorWriter.toString().length() > 0) {
                     response.addProperty("errors", errorWriter.toString());
                 }
+                // The exception is already reported structurally above; read any other logged
+                // problems before we log server-side so we don't echo our own error line back.
+                attachProblemLogs(response, logBuffer, false);
+                logger.error("Script execution failed", cause);
                 return ToolResult.success(response);
             } catch (Exception e) {
+                JsonObject response = new JsonObject();
+                response.addProperty("success", false);
+                appendErrorDetails(response, e);
+                response.addProperty("output", outputWriter.toString());
+                attachProblemLogs(response, logBuffer, false);
                 logger.error("Script execution failed", e);
-                return ToolResult.error("Script execution failed: " + e.getMessage(), e);
+                return ToolResult.success(response);
+            } finally {
+                if (logCaptureRegistered) {
+                    try {
+                        LogManager.removeTextAppendableFX(logCapture);
+                    } catch (Throwable ignored) {
+                        // best-effort cleanup
+                    }
+                }
             }
+        }
+
+        /**
+         * Populate a response with detailed information about a thrown exception:
+         * a concise message, the exception type, the full cause chain, and a stack trace.
+         */
+        private static void appendErrorDetails(JsonObject response, Throwable cause) {
+            String message = cause.getMessage();
+            if (message == null || message.isBlank())
+                message = cause.getClass().getName();
+            response.addProperty("error", message);
+            response.addProperty("errorType", cause.getClass().getName());
+
+            // Walk the cause chain; the root cause is often the most informative part.
+            List<String> chain = new ArrayList<>();
+            Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+            Throwable root = cause;
+            for (Throwable t = cause; t != null && seen.add(t); t = t.getCause()) {
+                String m = t.getMessage();
+                chain.add(t.getClass().getName() + (m != null ? ": " + m : ""));
+                root = t;
+            }
+            if (chain.size() > 1) {
+                JsonArray arr = new JsonArray();
+                chain.forEach(arr::add);
+                response.add("causeChain", arr);
+                String rootMessage = root.getMessage();
+                response.addProperty("rootCause",
+                        root.getClass().getName() + (rootMessage != null ? ": " + rootMessage : ""));
+            }
+            response.addProperty("stackTrace", formatStackTrace(cause));
+        }
+
+        /** Format a full stack trace as a string, capped to a reasonable length. */
+        private static String formatStackTrace(Throwable t) {
+            StringWriter sw = new StringWriter();
+            t.printStackTrace(new PrintWriter(sw));
+            String trace = sw.toString();
+            int max = 8000;
+            if (trace.length() > max)
+                trace = trace.substring(0, max) + "\n... (stack trace truncated)";
+            return trace;
+        }
+
+        /**
+         * Flush any pending FX-thread log deliveries, extract WARN/ERROR entries from the captured
+         * log text, and attach them to the response. When {@code addSilentFailureHint} is true and
+         * problems were found on an otherwise-successful run, also add a warning explaining that an
+         * operation may have failed silently.
+         */
+        private void attachProblemLogs(JsonObject response, StringBuffer logBuffer, boolean addSilentFailureHint) {
+            // Log text is delivered to TextAppendables on the JavaFX thread; make sure any queued
+            // deliveries have run before we read the buffer.
+            try {
+                if (Platform.isFxApplicationThread()) {
+                    // Already on FX thread: pending runLater tasks can't be flushed by waiting; skip.
+                } else {
+                    CountDownLatch latch = new CountDownLatch(1);
+                    Platform.runLater(latch::countDown);
+                    latch.await(2, TimeUnit.SECONDS);
+                }
+            } catch (Throwable ignored) {
+                // FX toolkit may be unavailable (headless) or interrupted; use whatever we have.
+            }
+
+            String problems = filterProblemLines(logBuffer.toString());
+            if (problems == null || problems.isEmpty())
+                return;
+            response.addProperty("logs", problems);
+            if (addSilentFailureHint && response.has("success")
+                    && response.get("success").getAsBoolean()) {
+                response.addProperty("warning",
+                        "The script finished, but warnings/errors were logged during execution (see 'logs'). "
+                        + "Some operations may have failed silently — for example runPlugin() logs its error "
+                        + "and returns false instead of throwing, so check the logged message and stack trace.");
+            }
+        }
+
+        /**
+         * Keep only WARN/ERROR blocks (header line plus their indented stack-trace/continuation
+         * lines) from captured log text, dropping INFO/DEBUG/TRACE noise. Returns {@code null} if
+         * nothing relevant remains.
+         */
+        private static String filterProblemLines(String raw) {
+            if (raw == null || raw.isEmpty())
+                return null;
+            StringBuilder sb = new StringBuilder();
+            boolean keep = false;
+            for (String line : raw.split("\n", -1)) {
+                if (line.startsWith("ERROR:") || line.startsWith("WARN:")) {
+                    keep = true;
+                    sb.append(line).append('\n');
+                } else if (line.startsWith("INFO:") || line.startsWith("DEBUG:") || line.startsWith("TRACE:")) {
+                    keep = false;
+                } else if (keep) {
+                    // Continuation line (stack-trace frame or "Caused by") belonging to a kept block.
+                    sb.append(line).append('\n');
+                }
+            }
+            String result = sb.toString().strip();
+            return result.isEmpty() ? null : result;
         }
     }
 
