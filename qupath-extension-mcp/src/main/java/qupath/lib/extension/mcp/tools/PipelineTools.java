@@ -58,6 +58,10 @@ public class PipelineTools {
 
     private static final Logger logger = LoggerFactory.getLogger(PipelineTools.class);
 
+    // Shared state for the explicit workflow-recording session markers.
+    private static volatile boolean recording = false;
+    private static volatile int recordingBaseline = 0;
+
     /**
      * List available plugins.
      */
@@ -684,6 +688,117 @@ public class PipelineTools {
                 throw new IllegalStateException("JSON workflow has no 'script' field to replay.");
             }
             return content;
+        }
+    }
+
+    /**
+     * Mark the start of a workflow-recording session for the current image.
+     */
+    public static class StartWorkflowRecording implements McpTool {
+
+        private static final String NAME = "qupath_start_workflow_recording";
+
+        private final McpToolRegistry registry;
+
+        public StartWorkflowRecording(McpToolRegistry registry) {
+            this.registry = registry;
+        }
+
+        @Override
+        public ToolDefinition getDefinition() {
+            JsonObject inputSchema = new JsonObject();
+            inputSchema.addProperty("type", "object");
+            JsonObject properties = new JsonObject();
+            JsonObject clear = new JsonObject();
+            clear.addProperty("type", "boolean");
+            clear.addProperty("description", "Clear the existing recorded history so the session starts fresh " +
+                "(default true). Set false to keep prior steps and only mark a new baseline.");
+            clear.addProperty("default", true);
+            properties.add("clear", clear);
+            inputSchema.add("properties", properties);
+            inputSchema.addProperty("additionalProperties", false);
+            return new ToolDefinition(
+                NAME,
+                "Begin a workflow-recording session for the current image. QuPath records commands into the " +
+                "image history automatically; this marks a start point (optionally clearing prior history) so " +
+                "the session can later be exported (qupath_export_workflow_json) and replayed.",
+                inputSchema,
+                null,
+                ToolDefinition.Annotations.write()
+            );
+        }
+
+        @Override
+        public ToolResult execute(JsonObject arguments) {
+            QuPathGUI qupath = registry.getQuPath();
+            if (qupath == null)
+                return ToolResult.error("No QuPath instance available (headless mode)");
+            ImageData<?> imageData = qupath.getImageData();
+            if (imageData == null)
+                return ToolResult.error("No image is currently open");
+            boolean clear = !arguments.has("clear") || arguments.get("clear").getAsBoolean();
+            Workflow workflow = imageData.getHistoryWorkflow();
+            if (clear)
+                workflow.clear();
+            recordingBaseline = workflow.size();
+            recording = true;
+            JsonObject result = new JsonObject();
+            result.addProperty("recording", true);
+            result.addProperty("cleared", clear);
+            result.addProperty("stepsAtStart", recordingBaseline);
+            return ToolResult.success(result);
+        }
+    }
+
+    /**
+     * Mark the end of a workflow-recording session and report what was recorded.
+     */
+    public static class StopWorkflowRecording implements McpTool {
+
+        private static final String NAME = "qupath_stop_workflow_recording";
+
+        private final McpToolRegistry registry;
+
+        public StopWorkflowRecording(McpToolRegistry registry) {
+            this.registry = registry;
+        }
+
+        @Override
+        public ToolDefinition getDefinition() {
+            JsonObject inputSchema = new JsonObject();
+            inputSchema.addProperty("type", "object");
+            inputSchema.add("properties", new JsonObject());
+            inputSchema.addProperty("additionalProperties", false);
+            return new ToolDefinition(
+                NAME,
+                "End the current workflow-recording session and report how many steps were recorded since the " +
+                "matching start, plus the runnable Groovy script for the recorded workflow. Pair with " +
+                "qupath_save_workflow / qupath_export_workflow_json to persist it.",
+                inputSchema,
+                null,
+                ToolDefinition.Annotations.readOnly()
+            );
+        }
+
+        @Override
+        public ToolResult execute(JsonObject arguments) {
+            QuPathGUI qupath = registry.getQuPath();
+            if (qupath == null)
+                return ToolResult.error("No QuPath instance available (headless mode)");
+            ImageData<?> imageData = qupath.getImageData();
+            if (imageData == null)
+                return ToolResult.error("No image is currently open");
+            Workflow workflow = imageData.getHistoryWorkflow();
+            int recorded = Math.max(0, workflow.size() - recordingBaseline);
+            boolean wasRecording = recording;
+            recording = false;
+            JsonObject result = new JsonObject();
+            result.addProperty("recording", false);
+            result.addProperty("wasRecording", wasRecording);
+            result.addProperty("stepsRecorded", recorded);
+            result.addProperty("totalSteps", workflow.size());
+            result.addProperty("script", workflow.createScript());
+            return ToolResult.success(result);
         }
     }
 }

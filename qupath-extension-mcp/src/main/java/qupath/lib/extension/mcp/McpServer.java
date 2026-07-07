@@ -107,6 +107,8 @@ public class McpServer {
         toolRegistry.register(new ObjectTools.GetSelectionInfo(toolRegistry));
         toolRegistry.register(new ObjectTools.GetAnnotationSummary(toolRegistry));
         toolRegistry.register(new ObjectTools.GetDetectionSummary(toolRegistry));
+        toolRegistry.register(new ObjectTools.SelectAnnotation(toolRegistry));
+        toolRegistry.register(new ObjectTools.UpdateAnnotationClass(toolRegistry));
 
         // Script tools
         toolRegistry.register(new ScriptTools.RunScript(toolRegistry));
@@ -122,6 +124,7 @@ public class McpServer {
         // Analysis tools
         toolRegistry.register(new AnalysisTools.RunCellDetection(toolRegistry));
         toolRegistry.register(new AnalysisTools.ExportMeasurements(toolRegistry));
+        toolRegistry.register(new AnalysisTools.MeasureAnnotations(toolRegistry));
 
         // Pipeline tools
         toolRegistry.register(new PipelineTools.ListPlugins(toolRegistry));
@@ -130,6 +133,8 @@ public class McpServer {
         toolRegistry.register(new PipelineTools.SaveWorkflow(toolRegistry));
         toolRegistry.register(new PipelineTools.ExportWorkflowJson(toolRegistry));
         toolRegistry.register(new PipelineTools.ReplayWorkflow(toolRegistry));
+        toolRegistry.register(new PipelineTools.StartWorkflowRecording(toolRegistry));
+        toolRegistry.register(new PipelineTools.StopWorkflowRecording(toolRegistry));
     }
 
     /**

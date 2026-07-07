@@ -33,6 +33,7 @@ import qupath.lib.gui.scripting.QPEx;
 import qupath.lib.images.ImageData;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.hierarchy.PathObjectHierarchy;
+import qupath.lib.scripting.QP;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -357,6 +358,108 @@ public class AnalysisTools {
             if (v.indexOf(',') >= 0 || v.indexOf('"') >= 0 || v.indexOf('\n') >= 0)
                 return "\"" + v.replace("\"", "\"\"") + "\"";
             return v;
+        }
+    }
+
+    /**
+     * Add shape measurements (area, perimeter, circularity, ...) to annotations or detections.
+     */
+    public static class MeasureAnnotations implements McpTool {
+
+        private static final String NAME = "qupath_measure_annotations";
+
+        private final McpToolRegistry registry;
+
+        public MeasureAnnotations(McpToolRegistry registry) {
+            this.registry = registry;
+        }
+
+        @Override
+        public ToolDefinition getDefinition() {
+            JsonObject inputSchema = new JsonObject();
+            inputSchema.addProperty("type", "object");
+            JsonObject properties = new JsonObject();
+
+            JsonObject objectType = new JsonObject();
+            objectType.addProperty("type", "string");
+            objectType.addProperty("description", "Which objects to measure: 'annotation' (default), 'cell', or " +
+                "'detection'.");
+            JsonArray en = new JsonArray();
+            en.add("annotation");
+            en.add("cell");
+            en.add("detection");
+            objectType.add("enum", en);
+            objectType.addProperty("default", "annotation");
+            properties.add("objectType", objectType);
+
+            JsonObject selectedOnly = new JsonObject();
+            selectedOnly.addProperty("type", "boolean");
+            selectedOnly.addProperty("description", "Measure only the currently selected objects (default false).");
+            selectedOnly.addProperty("default", false);
+            properties.add("selectedOnly", selectedOnly);
+
+            inputSchema.add("properties", properties);
+            inputSchema.addProperty("additionalProperties", false);
+
+            return new ToolDefinition(
+                NAME,
+                "Add shape measurements (area, perimeter, circularity, caliper, etc.) to annotations, cells, or " +
+                "detections. Intensity measurements are produced by cell detection or qupath_run_plugin; this " +
+                "tool covers geometric features. Returns how many objects were measured and the measurement " +
+                "columns now present.",
+                inputSchema,
+                null,
+                ToolDefinition.Annotations.write()
+            );
+        }
+
+        @Override
+        public ToolResult execute(JsonObject arguments) {
+            QuPathGUI qupath = registry.getQuPath();
+            if (qupath == null)
+                return ToolResult.error("No QuPath instance available (headless mode)");
+            ImageData<?> imageData = qupath.getImageData();
+            if (imageData == null)
+                return ToolResult.error("No image is currently open");
+
+            String objectType = arguments.has("objectType") && !arguments.get("objectType").isJsonNull()
+                    ? arguments.get("objectType").getAsString() : "annotation";
+            boolean selectedOnly = arguments.has("selectedOnly") && arguments.get("selectedOnly").getAsBoolean();
+
+            PathObjectHierarchy hierarchy = imageData.getHierarchy();
+            List<PathObject> objects = new ArrayList<>();
+            if (selectedOnly) {
+                objects.addAll(hierarchy.getSelectionModel().getSelectedObjects());
+            } else {
+                switch (objectType) {
+                    case "cell" -> {
+                        for (PathObject d : hierarchy.getDetectionObjects())
+                            if (d.isCell())
+                                objects.add(d);
+                    }
+                    case "detection" -> objects.addAll(hierarchy.getDetectionObjects());
+                    default -> objects.addAll(hierarchy.getAnnotationObjects());
+                }
+            }
+            if (objects.isEmpty())
+                return ToolResult.error("No '" + objectType + "' objects to measure"
+                    + (selectedOnly ? " in the current selection." : "."));
+
+            try {
+                QP.addShapeMeasurements(imageData, objects);
+                hierarchy.fireHierarchyChangedEvent(this);
+
+                JsonObject result = new JsonObject();
+                result.addProperty("measured", objects.size());
+                result.addProperty("objectType", selectedOnly ? "selected" : objectType);
+                JsonArray cols = new JsonArray();
+                objects.get(0).getMeasurementList().getMeasurementNames().forEach(cols::add);
+                result.add("measurementColumns", cols);
+                return ToolResult.success(result);
+            } catch (Exception e) {
+                logger.error("Failed to measure objects", e);
+                return ToolResult.error("Failed to measure objects: " + e.getMessage(), e);
+            }
         }
     }
 }

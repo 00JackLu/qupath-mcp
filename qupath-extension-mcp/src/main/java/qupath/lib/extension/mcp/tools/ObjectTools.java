@@ -1100,4 +1100,195 @@ public class ObjectTools {
             }
         }
     }
+
+    /**
+     * Select annotation(s) by id, classification, index, or all. Changes the selection state.
+     */
+    public static class SelectAnnotation implements McpTool {
+
+        private static final String NAME = "qupath_select_annotation";
+
+        private final McpToolRegistry registry;
+
+        public SelectAnnotation(McpToolRegistry registry) {
+            this.registry = registry;
+        }
+
+        @Override
+        public ToolDefinition getDefinition() {
+            JsonObject inputSchema = new JsonObject();
+            inputSchema.addProperty("type", "object");
+            JsonObject properties = new JsonObject();
+            JsonObject id = new JsonObject();
+            id.addProperty("type", "string");
+            id.addProperty("description", "Select the annotation with this object id.");
+            properties.add("id", id);
+            JsonObject classification = new JsonObject();
+            classification.addProperty("type", "string");
+            classification.addProperty("description", "Select all annotations with this classification.");
+            properties.add("classification", classification);
+            JsonObject index = new JsonObject();
+            index.addProperty("type", "integer");
+            index.addProperty("description", "Select the annotation at this 0-based index.");
+            properties.add("index", index);
+            JsonObject all = new JsonObject();
+            all.addProperty("type", "boolean");
+            all.addProperty("description", "Select all annotations.");
+            properties.add("all", all);
+            inputSchema.add("properties", properties);
+            inputSchema.addProperty("additionalProperties", false);
+            return new ToolDefinition(
+                NAME,
+                "Select annotation(s) by 'id', 'classification', 'index', or 'all':true. Selection is how many " +
+                "operations (e.g. cell detection) choose their target, so use this to focus subsequent actions. " +
+                "Returns the selected objects.",
+                inputSchema,
+                null,
+                ToolDefinition.Annotations.write()
+            );
+        }
+
+        @Override
+        public ToolResult execute(JsonObject arguments) {
+            QuPathGUI qupath = registry.getQuPath();
+            if (qupath == null)
+                return ToolResult.error("No QuPath instance available (headless mode)");
+            ImageData<?> imageData = qupath.getImageData();
+            if (imageData == null)
+                return ToolResult.error("No image is currently open");
+            PathObjectHierarchy hierarchy = imageData.getHierarchy();
+            List<PathObject> annotations = new ArrayList<>(hierarchy.getAnnotationObjects());
+            List<PathObject> toSelect = new ArrayList<>();
+            try {
+                if (arguments.has("all") && arguments.get("all").getAsBoolean()) {
+                    toSelect.addAll(annotations);
+                } else if (arguments.has("id") && !arguments.get("id").isJsonNull()) {
+                    PathObject o = findObjectById(hierarchy, arguments.get("id").getAsString());
+                    if (o != null)
+                        toSelect.add(o);
+                } else if (arguments.has("classification") && !arguments.get("classification").isJsonNull()) {
+                    String cls = arguments.get("classification").getAsString();
+                    for (PathObject a : annotations)
+                        if (a.getPathClass() != null && a.getPathClass().toString().equals(cls))
+                            toSelect.add(a);
+                } else if (arguments.has("index") && !arguments.get("index").isJsonNull()) {
+                    int i = arguments.get("index").getAsInt();
+                    if (i < 0 || i >= annotations.size())
+                        return ToolResult.error("Index " + i + " out of range (0.." + (annotations.size() - 1) + ").");
+                    toSelect.add(annotations.get(i));
+                } else {
+                    return ToolResult.error("Specify one of: 'id', 'classification', 'index', or 'all':true.");
+                }
+                if (toSelect.isEmpty())
+                    return ToolResult.error("No matching annotation found.");
+                hierarchy.getSelectionModel().setSelectedObjects(toSelect, toSelect.get(0));
+
+                JsonObject result = new JsonObject();
+                result.addProperty("selected", toSelect.size());
+                JsonArray arr = new JsonArray();
+                for (PathObject o : toSelect)
+                    arr.add(describeObject(o));
+                result.add("objects", arr);
+                return ToolResult.success(result);
+            } catch (Exception e) {
+                logger.error("Failed to select annotation", e);
+                return ToolResult.error("Failed to select annotation: " + e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * Set the classification of object(s) by id or on the current selection.
+     */
+    public static class UpdateAnnotationClass implements McpTool {
+
+        private static final String NAME = "qupath_update_annotation_class";
+
+        private final McpToolRegistry registry;
+
+        public UpdateAnnotationClass(McpToolRegistry registry) {
+            this.registry = registry;
+        }
+
+        @Override
+        public ToolDefinition getDefinition() {
+            JsonObject inputSchema = new JsonObject();
+            inputSchema.addProperty("type", "object");
+            JsonObject properties = new JsonObject();
+            JsonObject id = new JsonObject();
+            id.addProperty("type", "string");
+            id.addProperty("description", "Object id to reclassify (omit to use the current selection).");
+            properties.add("id", id);
+            JsonObject classification = new JsonObject();
+            classification.addProperty("type", "string");
+            classification.addProperty("description", "New classification name. Use an empty string to clear " +
+                "the classification (make it unclassified).");
+            properties.add("classification", classification);
+            JsonObject applyToSelection = new JsonObject();
+            applyToSelection.addProperty("type", "boolean");
+            applyToSelection.addProperty("description", "Apply to all currently selected objects (default false).");
+            applyToSelection.addProperty("default", false);
+            properties.add("applyToSelection", applyToSelection);
+            inputSchema.add("properties", properties);
+            JsonArray required = new JsonArray();
+            required.add("classification");
+            inputSchema.add("required", required);
+            inputSchema.addProperty("additionalProperties", false);
+            return new ToolDefinition(
+                NAME,
+                "Set the classification of an object (by 'id') or of the current selection " +
+                "('applyToSelection':true). Pass an empty 'classification' to clear it. Returns how many " +
+                "objects were updated.",
+                inputSchema,
+                null,
+                ToolDefinition.Annotations.write()
+            );
+        }
+
+        @Override
+        public ToolResult execute(JsonObject arguments) {
+            QuPathGUI qupath = registry.getQuPath();
+            if (qupath == null)
+                return ToolResult.error("No QuPath instance available (headless mode)");
+            ImageData<?> imageData = qupath.getImageData();
+            if (imageData == null)
+                return ToolResult.error("No image is currently open");
+            if (!arguments.has("classification") || arguments.get("classification").isJsonNull())
+                return ToolResult.error("Missing required parameter 'classification' (use \"\" to clear).");
+
+            PathObjectHierarchy hierarchy = imageData.getHierarchy();
+            boolean applyToSelection = arguments.has("applyToSelection")
+                    && arguments.get("applyToSelection").getAsBoolean();
+
+            List<PathObject> targets = new ArrayList<>();
+            if (applyToSelection) {
+                targets.addAll(hierarchy.getSelectionModel().getSelectedObjects());
+            } else if (arguments.has("id") && !arguments.get("id").isJsonNull()) {
+                PathObject o = findObjectById(hierarchy, arguments.get("id").getAsString());
+                if (o == null)
+                    return ToolResult.error("No object found with id " + arguments.get("id").getAsString());
+                targets.add(o);
+            } else {
+                return ToolResult.error("Specify 'id' or 'applyToSelection':true.");
+            }
+            if (targets.isEmpty())
+                return ToolResult.error("No target objects (empty selection?).");
+
+            try {
+                String cls = arguments.get("classification").getAsString();
+                PathClass pathClass = (cls == null || cls.isBlank()) ? null : PathClass.fromString(cls);
+                for (PathObject t : targets)
+                    t.setPathClass(pathClass);
+                hierarchy.fireObjectClassificationsChangedEvent(this, targets);
+
+                JsonObject result = new JsonObject();
+                result.addProperty("updated", targets.size());
+                result.addProperty("classification", pathClass != null ? pathClass.toString() : null);
+                return ToolResult.success(result);
+            } catch (Exception e) {
+                logger.error("Failed to update classification", e);
+                return ToolResult.error("Failed to update classification: " + e.getMessage(), e);
+            }
+        }
+    }
 }
