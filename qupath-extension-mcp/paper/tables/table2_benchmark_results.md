@@ -43,8 +43,9 @@ LuCa-7color multiplex fluorescence (8-channel component); date = 2026-07-07.
    (`get_annotation_summary` was unaffected). Root cause: the `type` switch only matched the
    upper-case plural enum (`ANNOTATIONS`), so the documented `annotation` value fell through to *all
    objects* — which include the hierarchy root. **Fixed:** the value is now normalised
-   (case-insensitive, singular/plural) and the root object is always excluded. Takes effect on the next
-   build.
+   (case-insensitive, singular/plural) and the root object is always excluded. **Verified live** on the
+   rebuilt instance: `type:"annotation"` returns only the annotation (no root object), the upper-case
+   plural form still works, and `type:"detection"` correctly returns the 5266 detections.
 2. A recurring non-fatal `Index -1 out of bounds for length 2` is logged during several operations on
    the 8-channel image; surfaced (correctly) by `run_script`'s log capture. Under investigation; did
    not affect any result.
