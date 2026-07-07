@@ -5,7 +5,7 @@ server, so AI agents (Claude Code, Claude Desktop, Codex, Cursor, …) can drive
 manage annotations/detections, import/export GeoJSON, run Groovy scripts, and invoke plugins.
 
 The extension embeds an HTTP MCP server (Streamable HTTP, MCP spec `2025-03-26`) inside QuPath. Point any
-MCP client at `http://127.0.0.1:9527/mcp` and you get **20 tools**.
+MCP client at `http://127.0.0.1:9527/mcp` and you get **34 tools**.
 
 This module is bundled directly into this QuPath fork (registered in `settings.gradle.kts` and depended on
 by `qupath-app`), so a normal build of the app already includes it — no separate install step needed.
@@ -61,7 +61,7 @@ It exercises the live server using only `curl` and prints PASS/FAIL per check
 | 1 | `GET /health` | `{"status":"ok"}` |
 | 2 | `POST /mcp` `initialize` | `protocolVersion` + `serverInfo` |
 | 3 | `POST /mcp` `ping` | a `result` |
-| 4 | `POST /mcp` `tools/list` | non-empty list of `qupath_*` tools (20) |
+| 4 | `POST /mcp` `tools/list` | non-empty list of `qupath_*` tools (34) |
 | 5 | `POST /mcp` `tools/call` (`qupath_list_objects`) | a well-formed JSON-RPC response |
 
 Override the target with env vars: `HOST=127.0.0.1 PORT=9527 ./test-mcp-server.sh`.
@@ -75,7 +75,7 @@ curl http://127.0.0.1:9527/health
 curl -s -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
   http://127.0.0.1:9527/mcp
-# -> {"jsonrpc":"2.0","id":1,"result":{"tools":[ ... 20 tools ... ]}}
+# -> {"jsonrpc":"2.0","id":1,"result":{"tools":[ ... 34 tools ... ]}}
 ```
 
 ### Unit tests (no running QuPath needed)
@@ -145,15 +145,20 @@ the client is stdio-only.
 
 ---
 
-## 4. Tools (20)
+## 4. Tools (34)
 
 | Group   | Tools |
 |---------|-------|
-| Image   | `qupath_get_image_info`, `qupath_get_image_metadata`, `qupath_read_region`, `qupath_capture_view` |
-| Objects | `qupath_list_objects`, `qupath_get_object_details`, `qupath_create_annotation`, `qupath_delete_objects`, `qupath_import_geojson`, `qupath_export_geojson` |
-| Scripts | `qupath_run_script` *(Groovy)*, `qupath_list_scripts` |
+| Image / viewer | `qupath_get_image_info`, `qupath_get_image_metadata`, `qupath_read_region`, `qupath_capture_view`, `qupath_get_viewer_state` |
+| Objects | `qupath_list_objects`, `qupath_get_object_details`, `qupath_get_selection_info`, `qupath_get_annotation_summary`, `qupath_get_detection_summary`, `qupath_select_annotation`, `qupath_create_annotation`, `qupath_update_annotation_class`, `qupath_delete_objects`, `qupath_import_geojson`, `qupath_export_geojson` |
+| Detection / measurement | `qupath_run_cell_detection`, `qupath_measure_annotations`, `qupath_export_measurements` |
+| Scripts | `qupath_validate_groovy_script`, `qupath_run_script` *(Groovy)*, `qupath_list_scripts` |
 | Project | `qupath_get_project_info`, `qupath_list_images`, `qupath_open_image`, `qupath_save_data` |
-| Plugins | `qupath_list_plugins`, `qupath_run_plugin`, `qupath_get_workflow`, `qupath_save_workflow` |
+| Plugins / provenance | `qupath_list_plugins`, `qupath_run_plugin`, `qupath_get_workflow`, `qupath_save_workflow`, `qupath_export_workflow_json`, `qupath_replay_workflow`, `qupath_start_workflow_recording`, `qupath_stop_workflow_recording` |
+
+Full reference (purpose, side-effect class, gating): [`docs/tools.md`](docs/tools.md). Other docs:
+[installation](docs/installation.md) · [quick start](docs/quick_start.md) · [safety](docs/safety.md) ·
+[workflow replay](docs/workflow_replay.md) · [examples](docs/examples.md) · [paper plan](paper/plan.md).
 
 `qupath_run_script` executes Groovy in QuPath's context (full `QPEx` API). It's annotated *destructive* and
 can be disabled — see below. On failure it returns rich diagnostics — `errorType`, `causeChain`,

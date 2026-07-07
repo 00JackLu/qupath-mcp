@@ -77,9 +77,9 @@ surface, first-class detection/measurement tools (`get_detection_summary`, `meas
 
 | Phase | Description | State |
 |-------|-------------|-------|
-| 0 | Plan doc + tool-interface gap analysis | in progress |
-| 1 | Freeze the v0.1 tool interface | pending |
-| 2 | Repository cleanup + docs | pending |
+| 0 | Plan doc + tool-interface gap analysis | complete |
+| 1 | Freeze the v0.1 tool interface | complete |
+| 2 | Repository cleanup + docs | complete |
 | 3 | Three demonstration workflows | pending |
 | 4 | Small benchmark (20–30 task cards) | pending |
 | 5 | Baselines (optional) | pending |

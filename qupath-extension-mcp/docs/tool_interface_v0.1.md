@@ -1,5 +1,9 @@
 # QuPath-MCP v0.1 Tool Interface — Gap Analysis
 
+> **Status: implemented (2026-07-07).** Every **Build**/**Extend** item below has shipped — the
+> interface grew from 20 to **34 tools** and all v0.1 tools are live-verified. This document is retained
+> as the design record; the authoritative reference for the shipped tools is [`tools.md`](tools.md).
+
 Maps the [plan](../paper/plan.md)'s required v0.1 tools to what already exists in the extension
 (20 tools) and defines what to build. Column meanings:
 
