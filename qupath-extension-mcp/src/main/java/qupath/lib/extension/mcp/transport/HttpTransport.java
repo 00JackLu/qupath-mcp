@@ -21,21 +21,26 @@
 
 package qupath.lib.extension.mcp.transport;
 
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-import com.sun.net.httpserver.HttpServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.lib.extension.mcp.McpConfiguration;
 import qupath.lib.extension.mcp.protocol.McpProtocolHandler;
 
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.PrintWriter;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
@@ -50,6 +55,14 @@ import java.util.concurrent.Executors;
  *   <li>Session management via Mcp-Session-Id header (optional)</li>
  * </ul>
  *
+ * <p>This is implemented directly on top of {@link ServerSocket} with a minimal HTTP/1.1
+ * request parser rather than {@code com.sun.net.httpserver}. That JDK HTTP server lives in the
+ * {@code jdk.httpserver} module, which is <em>not</em> included in the trimmed runtime images that
+ * ship with QuPath (jpackage/jlink only bundle a hand-picked set of modules). Relying on it caused
+ * {@code NoClassDefFoundError: com/sun/net/httpserver/HttpHandler} when the extension JAR was dropped
+ * into a stock QuPath install. {@code java.net.ServerSocket} is part of {@code java.base}, so it is
+ * always present regardless of how QuPath's runtime was assembled.
+ *
  * @see <a href="https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http">MCP Streamable HTTP Transport</a>
  */
 public class HttpTransport {
@@ -58,7 +71,10 @@ public class HttpTransport {
 
     private final McpConfiguration config;
     private final McpProtocolHandler protocolHandler;
-    private HttpServer server;
+
+    private ServerSocket serverSocket;
+    private ExecutorService executor;
+    private Thread acceptThread;
     private volatile boolean running = false;
 
     public HttpTransport(McpConfiguration config, McpProtocolHandler protocolHandler) {
@@ -78,21 +94,16 @@ public class HttpTransport {
         String host = config.getHost();
         int port = config.getPort();
 
-        server = HttpServer.create(new InetSocketAddress(host, port), 0);
+        serverSocket = new ServerSocket();
+        serverSocket.setReuseAddress(true);
+        serverSocket.bind(new InetSocketAddress(host, port));
 
-        // Single MCP endpoint for Streamable HTTP transport
-        server.createContext("/mcp", new StreamableHttpHandler());
-
-        // Health check endpoint
-        server.createContext("/health", new HealthHandler());
-
-        // Well-known endpoints for discovery
-        server.createContext("/.well-known/oauth-authorization-server", new NotFoundHandler());
-        server.createContext("/.well-known/mcp", new McpDiscoveryHandler());
-
-        server.setExecutor(Executors.newFixedThreadPool(config.getMaxThreads()));
-        server.start();
+        executor = Executors.newFixedThreadPool(Math.max(1, config.getMaxThreads()));
         running = true;
+
+        acceptThread = new Thread(this::acceptLoop, "mcp-http-accept");
+        acceptThread.setDaemon(true);
+        acceptThread.start();
 
         logger.info("MCP HTTP server started on {}:{}", host, port);
         logger.info("MCP endpoint (Streamable HTTP): http://{}:{}/mcp", host, port);
@@ -106,12 +117,20 @@ public class HttpTransport {
         if (!running) {
             return;
         }
-
-        if (server != null) {
-            server.stop(0);
-            logger.info("MCP HTTP server stopped");
-        }
         running = false;
+
+        // Closing the server socket makes the blocked accept() call throw, ending the accept loop.
+        if (serverSocket != null) {
+            try {
+                serverSocket.close();
+            } catch (IOException e) {
+                logger.debug("Error closing MCP server socket: {}", e.getMessage());
+            }
+        }
+        if (executor != null) {
+            executor.shutdownNow();
+        }
+        logger.info("MCP HTTP server stopped");
     }
 
     /**
@@ -125,239 +144,227 @@ public class HttpTransport {
      * Get the port the server is listening on.
      */
     public int getPort() {
-        return server != null ? server.getAddress().getPort() : -1;
+        return serverSocket != null && serverSocket.isBound() ? serverSocket.getLocalPort() : -1;
+    }
+
+    private void acceptLoop() {
+        while (running) {
+            Socket socket;
+            try {
+                socket = serverSocket.accept();
+            } catch (IOException e) {
+                if (running)
+                    logger.debug("Error accepting MCP connection: {}", e.getMessage());
+                break;
+            }
+            try {
+                executor.submit(() -> handleConnection(socket));
+            } catch (Exception e) {
+                // Executor rejected the task (e.g. during shutdown); close the socket.
+                closeQuietly(socket);
+            }
+        }
     }
 
     /**
-     * Handler for MCP Streamable HTTP transport.
+     * Read and handle a single HTTP request on the given connection, then close it.
+     * Uses {@code Connection: close} semantics (one request per connection) to keep parsing simple.
      */
-    private class StreamableHttpHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            String method = exchange.getRequestMethod();
+    private void handleConnection(Socket socket) {
+        try (socket) {
+            socket.setSoTimeout(Math.max(1000, config.getRequestTimeout()));
+            InputStream in = new BufferedInputStream(socket.getInputStream());
+            OutputStream out = socket.getOutputStream();
 
-            // Handle CORS preflight
-            if ("OPTIONS".equals(method)) {
-                sendCorsHeaders(exchange);
-                exchange.getResponseHeaders().set("Access-Control-Allow-Headers",
-                    "Content-Type, Accept, Mcp-Session-Id");
-                exchange.sendResponseHeaders(204, -1);
+            String requestLine = readLine(in);
+            if (requestLine == null || requestLine.isEmpty())
+                return;
+
+            String[] parts = requestLine.split(" ");
+            if (parts.length < 2) {
+                writeResponse(out, 400, "text/plain", "Bad request".getBytes(StandardCharsets.UTF_8), null);
                 return;
             }
+            String method = parts[0];
+            String path = parts[1];
+            int q = path.indexOf('?');
+            if (q >= 0)
+                path = path.substring(0, q);
 
-            // Handle GET for SSE stream (persistent connection for notifications)
-            if ("GET".equals(method)) {
-                handleSseConnect(exchange);
-                return;
+            // Parse headers (keys lower-cased for case-insensitive lookup).
+            Map<String, String> headers = new HashMap<>();
+            String line;
+            while ((line = readLine(in)) != null && !line.isEmpty()) {
+                int idx = line.indexOf(':');
+                if (idx > 0)
+                    headers.put(line.substring(0, idx).trim().toLowerCase(Locale.ROOT), line.substring(idx + 1).trim());
             }
 
-            // Handle POST for JSON-RPC messages
-            if ("POST".equals(method)) {
-                handlePostRequest(exchange);
-                return;
-            }
-
-            sendError(exchange, 405, "Method not allowed");
-        }
-
-        /**
-         * Handle POST request with JSON-RPC message(s).
-         */
-        private void handlePostRequest(HttpExchange exchange) throws IOException {
-            // Check Accept header to determine response format
-            String acceptHeader = exchange.getRequestHeaders().getFirst("Accept");
-            boolean acceptSse = acceptHeader != null && acceptHeader.contains("text/event-stream");
-
-            // Read request body
-            String requestBody;
-            try (InputStream is = exchange.getRequestBody()) {
-                requestBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            }
-
-            if (requestBody.isEmpty()) {
-                sendError(exchange, 400, "Empty request body");
-                return;
-            }
-
-            // Get or create session ID (optional in Streamable HTTP)
-            String sessionId = exchange.getRequestHeaders().getFirst("Mcp-Session-Id");
-            if (sessionId == null || sessionId.isEmpty()) {
-                sessionId = UUID.randomUUID().toString();
-            }
-
-            // Process the request
-            String responseBody = protocolHandler.handleRequest(requestBody);
-
-            // Handle notifications (no response)
-            if (responseBody == null) {
-                sendCorsHeaders(exchange);
-                exchange.getResponseHeaders().set("Mcp-Session-Id", sessionId);
-                exchange.sendResponseHeaders(202, -1);
-                return;
-            }
-
-            // Send response
-            if (acceptSse) {
-                // Send as SSE stream
-                sendSseResponse(exchange, responseBody, sessionId);
-            } else {
-                // Send as plain JSON (stateless)
-                sendJsonResponse(exchange, responseBody, sessionId);
-            }
-        }
-
-        /**
-         * Handle GET request to establish SSE connection for server-to-client notifications.
-         */
-        private void handleSseConnect(HttpExchange exchange) throws IOException {
-            // Check if client accepts SSE
-            String acceptHeader = exchange.getRequestHeaders().getFirst("Accept");
-
-            // If client wants SSE stream, set up streaming response
-            if (acceptHeader != null && acceptHeader.contains("text/event-stream")) {
-                sendCorsHeaders(exchange);
-                exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
-                exchange.getResponseHeaders().set("Cache-Control", "no-cache");
-                exchange.sendResponseHeaders(200, 0);
-
-                try (OutputStream os = exchange.getResponseBody();
-                     PrintWriter writer = new PrintWriter(os, true, StandardCharsets.UTF_8)) {
-                    // Send endpoint discovery event
-                    writer.println("event: endpoint");
-                    writer.println("data: /mcp");
-                    writer.println();
-                    writer.flush();
-
-                    // Send a heartbeat and close (stateless mode)
-                    writer.println(": connected");
-                    writer.flush();
+            // Read body if a Content-Length was provided.
+            String body = "";
+            String contentLength = headers.get("content-length");
+            if (contentLength != null) {
+                int len = 0;
+                try {
+                    len = Integer.parseInt(contentLength.trim());
+                } catch (NumberFormatException e) {
+                    len = 0;
                 }
-                return;
+                if (len > 0) {
+                    byte[] buf = in.readNBytes(len);
+                    body = new String(buf, StandardCharsets.UTF_8);
+                }
             }
 
-            // For other GET requests, return server info as JSON
-            String response = String.format(
-                "{\"name\":\"qupath-mcp-server\",\"version\":\"0.1.0\",\"protocolVersion\":\"2025-03-26\",\"endpoint\":\"/mcp\"}"
-            );
-            sendCorsHeaders(exchange);
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(200, responseBytes.length);
+            route(method, path, headers, body, out);
 
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(responseBytes);
-            }
+        } catch (IOException e) {
+            logger.debug("Error handling MCP connection: {}", e.getMessage());
+        }
+    }
+
+    private void route(String method, String path, Map<String, String> headers, String body, OutputStream out) throws IOException {
+        // CORS preflight
+        if ("OPTIONS".equals(method)) {
+            writeResponse(out, 204, null, null, null);
+            return;
         }
 
-        /**
-         * Send response as JSON.
-         */
-        private void sendJsonResponse(HttpExchange exchange, String responseBody, String sessionId) throws IOException {
-            sendCorsHeaders(exchange);
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.getResponseHeaders().set("Mcp-Session-Id", sessionId);
-            byte[] responseBytes = responseBody.getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(200, responseBytes.length);
-
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(responseBytes);
-            }
+        switch (path) {
+            case "/mcp" -> handleMcp(method, headers, body, out);
+            case "/health" -> writeResponse(out, 200, "application/json",
+                    "{\"status\":\"ok\"}".getBytes(StandardCharsets.UTF_8), null);
+            case "/.well-known/mcp" -> writeResponse(out, 200, "application/json",
+                    String.format("{\"name\":\"qupath-mcp-server\",\"version\":\"0.1.0\",\"endpoint\":\"http://%s:%d/mcp\"}",
+                            config.getHost(), config.getPort()).getBytes(StandardCharsets.UTF_8), null);
+            // Anything else (including /.well-known/oauth-authorization-server) is an unsupported endpoint.
+            default -> writeResponse(out, 404, "application/json",
+                    "{\"error\":\"not_found\",\"message\":\"This endpoint is not supported\"}".getBytes(StandardCharsets.UTF_8), null);
         }
+    }
 
-        /**
-         * Send response as SSE stream.
-         */
-        private void sendSseResponse(HttpExchange exchange, String responseBody, String sessionId) throws IOException {
-            sendCorsHeaders(exchange);
-            exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
-            exchange.getResponseHeaders().set("Cache-Control", "no-cache");
-            exchange.getResponseHeaders().set("Mcp-Session-Id", sessionId);
-            exchange.sendResponseHeaders(200, 0);
-
-            try (OutputStream os = exchange.getResponseBody();
-                 PrintWriter writer = new PrintWriter(os, true, StandardCharsets.UTF_8)) {
-                // Send response as SSE event
-                writer.println("event: message");
-                writer.print("data: ");
-                writer.println(responseBody);
-                writer.println();
-                writer.flush();
-            }
+    private void handleMcp(String method, Map<String, String> headers, String body, OutputStream out) throws IOException {
+        if ("GET".equals(method)) {
+            handleSseConnect(headers, out);
+        } else if ("POST".equals(method)) {
+            handlePostRequest(headers, body, out);
+        } else {
+            writeResponse(out, 405, "text/plain", "Method not allowed".getBytes(StandardCharsets.UTF_8), null);
         }
     }
 
     /**
-     * Handler for health check requests.
+     * Handle a POST request carrying JSON-RPC message(s).
      */
-    private class HealthHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            String response = "{\"status\":\"ok\"}";
-            sendCorsHeaders(exchange);
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(200, responseBytes.length);
+    private void handlePostRequest(Map<String, String> headers, String body, OutputStream out) throws IOException {
+        if (body.isEmpty()) {
+            writeResponse(out, 400, "text/plain", "Empty request body".getBytes(StandardCharsets.UTF_8), null);
+            return;
+        }
 
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(responseBytes);
-            }
+        // Session ID is optional in Streamable HTTP; echo back a stable value.
+        String sessionId = headers.get("mcp-session-id");
+        if (sessionId == null || sessionId.isEmpty())
+            sessionId = UUID.randomUUID().toString();
+
+        String responseBody = protocolHandler.handleRequest(body);
+
+        // Notifications produce no response.
+        if (responseBody == null) {
+            writeResponse(out, 202, null, null, sessionId);
+            return;
+        }
+
+        String acceptHeader = headers.get("accept");
+        boolean acceptSse = acceptHeader != null && acceptHeader.contains("text/event-stream");
+        if (acceptSse) {
+            String sse = "event: message\ndata: " + responseBody + "\n\n";
+            writeResponse(out, 200, "text/event-stream", sse.getBytes(StandardCharsets.UTF_8), sessionId);
+        } else {
+            writeResponse(out, 200, "application/json", responseBody.getBytes(StandardCharsets.UTF_8), sessionId);
         }
     }
 
     /**
-     * Handler for MCP discovery endpoint.
+     * Handle a GET request to /mcp: either open a (stateless) SSE stream advertising the endpoint,
+     * or return server info as JSON.
      */
-    private class McpDiscoveryHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            // Return MCP server info for discovery
-            String response = String.format(
-                "{\"name\":\"qupath-mcp-server\",\"version\":\"0.1.0\",\"endpoint\":\"http://%s:%d/mcp\"}",
-                config.getHost(), config.getPort()
-            );
-            sendCorsHeaders(exchange);
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(200, responseBytes.length);
-
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(responseBytes);
-            }
+    private void handleSseConnect(Map<String, String> headers, OutputStream out) throws IOException {
+        String acceptHeader = headers.get("accept");
+        if (acceptHeader != null && acceptHeader.contains("text/event-stream")) {
+            String sse = "event: endpoint\ndata: /mcp\n\n: connected\n";
+            writeResponse(out, 200, "text/event-stream", sse.getBytes(StandardCharsets.UTF_8), null);
+        } else {
+            String info = "{\"name\":\"qupath-mcp-server\",\"version\":\"0.1.0\",\"protocolVersion\":\"2025-03-26\",\"endpoint\":\"/mcp\"}";
+            writeResponse(out, 200, "application/json", info.getBytes(StandardCharsets.UTF_8), null);
         }
     }
 
     /**
-     * Handler for endpoints that don't exist (returns proper JSON error).
+     * Write a complete HTTP/1.1 response (headers + optional body) and close semantics.
+     *
+     * @param out         connection output stream
+     * @param status      HTTP status code
+     * @param contentType content type, or {@code null} for a body-less response
+     * @param body        response body bytes, or {@code null} for none
+     * @param sessionId   value for the Mcp-Session-Id header, or {@code null} to omit it
      */
-    private class NotFoundHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            String response = "{\"error\":\"not_found\",\"message\":\"This endpoint is not supported\"}";
-            sendCorsHeaders(exchange);
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(404, responseBytes.length);
+    private void writeResponse(OutputStream out, int status, String contentType, byte[] body, String sessionId) throws IOException {
+        int length = body != null ? body.length : 0;
+        StringBuilder sb = new StringBuilder();
+        sb.append("HTTP/1.1 ").append(status).append(' ').append(reasonPhrase(status)).append("\r\n");
+        sb.append("Access-Control-Allow-Origin: *\r\n");
+        sb.append("Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n");
+        sb.append("Access-Control-Allow-Headers: Content-Type, Accept, Mcp-Session-Id\r\n");
+        sb.append("Cache-Control: no-cache\r\n");
+        if (contentType != null)
+            sb.append("Content-Type: ").append(contentType).append("\r\n");
+        if (sessionId != null)
+            sb.append("Mcp-Session-Id: ").append(sessionId).append("\r\n");
+        sb.append("Content-Length: ").append(length).append("\r\n");
+        sb.append("Connection: close\r\n");
+        sb.append("\r\n");
 
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(responseBytes);
-            }
+        out.write(sb.toString().getBytes(StandardCharsets.US_ASCII));
+        if (length > 0)
+            out.write(body);
+        out.flush();
+    }
+
+    private static String reasonPhrase(int status) {
+        return switch (status) {
+            case 200 -> "OK";
+            case 202 -> "Accepted";
+            case 204 -> "No Content";
+            case 400 -> "Bad Request";
+            case 404 -> "Not Found";
+            case 405 -> "Method Not Allowed";
+            default -> "";
+        };
+    }
+
+    /**
+     * Read a single line terminated by LF (a trailing CR is stripped). Header/request lines are
+     * ASCII, so bytes are decoded as ISO-8859-1. Returns {@code null} at end of stream.
+     */
+    private static String readLine(InputStream in) throws IOException {
+        int b = in.read();
+        if (b == -1)
+            return null;
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        while (b != -1 && b != '\n') {
+            if (b != '\r')
+                buf.write(b);
+            b = in.read();
         }
+        return buf.toString(StandardCharsets.ISO_8859_1);
     }
 
-    private void sendCorsHeaders(HttpExchange exchange) {
-        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
-        exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type, Accept, Mcp-Session-Id");
-    }
-
-    private void sendError(HttpExchange exchange, int statusCode, String message) throws IOException {
-        sendCorsHeaders(exchange);
-        exchange.getResponseHeaders().set("Content-Type", "text/plain");
-        byte[] responseBytes = message.getBytes(StandardCharsets.UTF_8);
-        exchange.sendResponseHeaders(statusCode, responseBytes.length);
-
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(responseBytes);
+    private static void closeQuietly(Socket socket) {
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+            // best effort
         }
     }
 }

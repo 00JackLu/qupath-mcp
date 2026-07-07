@@ -57,7 +57,8 @@ runtime {
 
         "jdk.unsupported",      // May be needed by some dependencies for sun.misc.Unsafe
         "jdk.zipfs",            // Needed for zip filesystem support
-        "jdk.management.agent"  // Enables VisualVM to connect and sample CPU use
+        "jdk.management.agent", // Enables VisualVM to connect and sample CPU use
+        "jdk.httpserver"        // Provides com.sun.net.httpserver, used by the MCP extension's HTTP server
     )
 
     val params = JPackageParams(
