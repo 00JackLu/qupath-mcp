@@ -1,5 +1,9 @@
 # Application Note — outline
 
+> The **formatted submission manuscript** is [`applications_note.md`](applications_note.md)
+> (Bioinformatics Applications Note: structured abstract, numbered sections 1–4, ~980-word body,
+> Figs 1–2, Tables 1–2). [`draft.md`](draft.md) is the longer working draft. This file is the outline.
+
 **Target venue:** *Bioinformatics* Applications Note (≈2 pages) — also suitable for ISMB/ISBI tool
 tracks.
 
