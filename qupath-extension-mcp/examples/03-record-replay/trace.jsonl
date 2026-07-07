@@ -1,0 +1,14 @@
+{"dir":"request","body":{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"qupath_start_workflow_recording","arguments":{"clear":true}}}}
+{"dir":"response","salient":{"recording":true,"clearedPriorHistory":true}}
+{"dir":"request","body":{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"qupath_run_script","arguments":{"script":"setImageType('FLUORESCENCE'); createSelectAllObject(true)"}}}}
+{"dir":"response","salient":{"success":true}}
+{"dir":"request","body":{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"qupath_run_cell_detection","arguments":{"detectionImage":"DAPI","threshold":1.0}}}}
+{"dir":"response","salient":{"success":true,"detectionsBefore":0,"detectionsAfter":5266,"added":5266}}
+{"dir":"request","body":{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"qupath_stop_workflow_recording","arguments":{}}}}
+{"dir":"response","salient":{"recording":false,"stepsRecorded":3}}
+{"dir":"request","body":{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"qupath_export_workflow_json","arguments":{}}}}
+{"dir":"response","salient":{"qupathVersion":"0.8.0-SNAPSHOT","stepCount":3,"image":"LuCa-7color_[13860,52919]_1x1component_data.tif - resolution #1"}}
+{"dir":"request","body":{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"qupath_save_workflow","arguments":{"name":"luca_dapi_detection"}}}}
+{"dir":"response","salient":{"saved":"<project>/qupath_workflow/luca_dapi_detection_20260707.groovy","steps":3}}
+{"dir":"request","body":{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"qupath_replay_workflow","arguments":{"path":"<project>/qupath_workflow/luca_dapi_detection_20260707.groovy"}}}}
+{"dir":"response","salient":{"status":"success","annotationsBefore":0,"annotationsAfter":1,"detectionsBefore":0,"detectionsAfter":5266}}

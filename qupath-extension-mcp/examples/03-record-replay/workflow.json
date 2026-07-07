@@ -1,0 +1,33 @@
+{
+  "qupathVersion": "0.8.0-SNAPSHOT",
+  "image": "LuCa-7color_[13860,52919]_1x1component_data.tif - resolution #1",
+  "imageType": "FLUORESCENCE",
+  "stepCount": 3,
+  "steps": [
+    {
+      "name": "Set image type",
+      "script": "setImageType('FLUORESCENCE')"
+    },
+    {
+      "name": "Select all objects",
+      "script": "createSelectAllObject(true)"
+    },
+    {
+      "name": "Cell detection",
+      "parameters": {
+        "detectionImageFluorescence": 1,
+        "requestedPixelSizeMicrons": 0.5,
+        "backgroundRadiusMicrons": 8.0,
+        "sigmaMicrons": 1.5,
+        "minAreaMicrons": 10.0,
+        "maxAreaMicrons": 400.0,
+        "threshold": 1.0,
+        "cellExpansionMicrons": 5.0,
+        "includeNuclei": true,
+        "makeMeasurements": true
+      },
+      "script": "runPlugin('qupath.imagej.detect.cells.WatershedCellDetection', '{...}')"
+    }
+  ],
+  "script": "setImageType('FLUORESCENCE')\ncreateSelectAllObject(true)\nrunPlugin('qupath.imagej.detect.cells.WatershedCellDetection', '{...}')\n"
+}

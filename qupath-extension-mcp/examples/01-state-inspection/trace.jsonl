@@ -1,0 +1,10 @@
+{"dir":"request","body":{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"qupath_get_image_info","arguments":{}}}}
+{"dir":"response","salient":{"name":"LuCa-7color_[13860,52919]_1x1component_data.tif - resolution #1","width":1868,"height":1400,"channels":7,"pixelType":"float32","pixelSizeMicrons":0.4977,"imageType":"FLUORESCENCE"}}
+{"dir":"request","body":{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"qupath_get_viewer_state","arguments":{}}}}
+{"dir":"response","salient":{"imageOpen":true,"downsample":1.0,"magnification":null,"region":{"x":0,"y":0,"width":1868,"height":1400},"z":0,"t":0,"channelsShown":7,"overlay":{"showAnnotations":true,"showDetections":true}}}
+{"dir":"request","body":{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"qupath_get_selection_info","arguments":{}}}}
+{"dir":"response","salient":{"selectedCount":1,"objects":[{"type":"annotation","classification":"Tumor","roiType":"Rectangle","areaPixels":2615200.0}]}}
+{"dir":"request","body":{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"qupath_get_annotation_summary","arguments":{}}}}
+{"dir":"response","salient":{"totalAnnotations":1,"calibrated":true,"byClass":[{"classification":"Tumor","count":1,"totalAreaPixels":2615200.0,"totalAreaMicrons2":648565.68}]}}
+{"dir":"request","body":{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"qupath_get_detection_summary","arguments":{}}}}
+{"dir":"response","salient":{"totalDetections":5266,"cells":5266,"byClass":[{"classification":"Unclassified","count":5266}]}}

@@ -1,0 +1,8 @@
+{"dir":"request","body":{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"qupath_get_selection_info","arguments":{}}}}
+{"dir":"response","salient":{"selectedCount":1,"objects":[{"type":"annotation","classification":"Tumor","roiType":"Rectangle"}]}}
+{"dir":"request","body":{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"qupath_run_cell_detection","arguments":{"detectionImage":"DAPI","threshold":1.0,"requestedPixelSizeMicrons":0.5,"cellExpansionMicrons":5.0,"backgroundRadiusMicrons":8.0}}}}
+{"dir":"response","salient":{"success":true,"detectionsBefore":0,"detectionsAfter":5266,"added":5266,"processingSeconds":3.31,"parameters":{"detectionImage":"DAPI","threshold":1.0,"requestedPixelSizeMicrons":0.5,"cellExpansionMicrons":5.0,"backgroundRadiusMicrons":8.0}}}
+{"dir":"request","body":{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"qupath_get_detection_summary","arguments":{}}}}
+{"dir":"response","salient":{"totalDetections":5266,"cells":5266,"byClass":[{"classification":"Unclassified","count":5266}]}}
+{"dir":"request","body":{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"qupath_export_measurements","arguments":{"objectType":"cell"}}}}
+{"dir":"response","salient":{"saved":"<project>/measurements_cell_20260707.csv","rows":5266,"columnCount":134}}
