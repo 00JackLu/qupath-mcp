@@ -81,7 +81,7 @@ surface, first-class detection/measurement tools (`get_detection_summary`, `meas
 | 1 | Freeze the v0.1 tool interface | complete |
 | 2 | Repository cleanup + docs | complete |
 | 3 | Three demonstration workflows | complete |
-| 4 | Small benchmark (20–30 task cards) | pending |
+| 4 | Small benchmark (20–30 task cards) | cards complete; live runs pending |
 | 5 | Baselines (optional) | pending |
 | 6 | Figures + tables | pending |
 | 7 | Application Note draft | pending |

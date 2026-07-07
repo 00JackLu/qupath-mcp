@@ -1,0 +1,2 @@
+task_id,task_category,model,mcp_client,success_or_failure,number_of_tool_calls,execution_error,invalid_operation,output_file_exists,replay_success,notes
+ST-01,state-inspection,,,,,,,,,

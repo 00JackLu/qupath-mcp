@@ -1,0 +1,28 @@
+task_id,category,prompt,required_tools,writes,replay
+ST-01,state-inspection,"What image is currently open? Give name, dimensions, channels, and pixel size.",qupath_get_image_info,no,no
+ST-02,state-inspection,"Describe the current viewer: what region is shown, at what zoom, which channels and overlays are on.",qupath_get_viewer_state,no,no
+ST-03,state-inspection,"How many annotations are there and what classes, with total area per class?",qupath_get_annotation_summary,no,no
+ST-04,state-inspection,"Is anything selected? Describe the selected objects.",qupath_get_selection_info,no,no
+ST-05,state-inspection,"Give me a full state briefing before I start: image, viewer, selection, annotations, detections.","qupath_get_image_info,qupath_get_viewer_state,qupath_get_selection_info,qupath_get_annotation_summary,qupath_get_detection_summary",no,no
+AN-01,annotation,"List all annotations with their classes.",qupath_list_objects,no,no
+AN-02,annotation,"Create a 500x500 rectangle annotation at the top-left of the image.",qupath_create_annotation,yes,no
+AN-03,annotation,"Select every annotation classified as Tumor.",qupath_select_annotation,yes,no
+AN-04,annotation,"Reclassify the selected annotation as Stroma.",qupath_update_annotation_class,yes,no
+AN-05,annotation,"Export all annotations to GeoJSON.",qupath_export_geojson,no,no
+AN-06,annotation,"Delete the annotation I just created (confirm which one first).","qupath_get_selection_info,qupath_delete_objects",yes,no
+CD-01,cell-detection,"Run DAPI cell detection inside the selected tumor annotation.",qupath_run_cell_detection,yes,no
+CD-02,cell-detection,"How many cells were detected, broken down by class?",qupath_get_detection_summary,no,no
+CD-03,cell-detection,"Run cell detection, then confirm the count actually increased from before.","qupath_get_detection_summary,qupath_run_cell_detection",yes,no
+CD-04,cell-detection,"Detect cells with a higher intensity threshold (2.0) and tell me how the count changed.",qupath_run_cell_detection,yes,no
+CD-05,cell-detection,"Add shape measurements (area, perimeter, circularity) to the tumor annotation.",qupath_measure_annotations,yes,no
+ME-01,measurement-export,"Export the per-cell measurement table as a CSV and tell me the path and row count.",qupath_export_measurements,yes,no
+ME-02,measurement-export,"How many measurement columns does the detection table have? List a few.",qupath_export_measurements,yes,no
+ME-03,measurement-export,"Export annotation-level measurements to CSV.",qupath_export_measurements,yes,no
+ME-04,measurement-export,"Export the cell measurements, then verify the file exists and parses as CSV.",qupath_export_measurements,yes,no
+ME-05,measurement-export,"Give me the mean DAPI nucleus intensity across all detected cells.","qupath_export_measurements,qupath_run_script",yes,no
+WR-01,workflow-replay,"Start recording a workflow, run DAPI cell detection, then stop and show me the recorded steps.","qupath_start_workflow_recording,qupath_run_cell_detection,qupath_stop_workflow_recording",yes,no
+WR-02,workflow-replay,"Export the current workflow as structured JSON with all step parameters.",qupath_export_workflow_json,no,no
+WR-03,workflow-replay,"Save this analysis as a reproducible workflow file I can rerun later.",qupath_save_workflow,yes,no
+WR-04,workflow-replay,"Replay the workflow I saved and confirm it reproduces the same object counts, with no model involved.",qupath_replay_workflow,yes,yes
+BP-01,batch-project,"List the images in this project and open the second one.","qupath_list_images,qupath_open_image",yes,no
+BP-02,batch-project,"Record a detection workflow on this image, save it, then tell me how to run it headless across the whole project.","qupath_save_workflow,qupath_export_workflow_json",yes,no
