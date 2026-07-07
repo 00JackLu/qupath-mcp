@@ -1,5 +1,8 @@
 # Javadocs
 docs/
+# ...but keep the MCP extension's research-release documentation (not generated Javadoc)
+!/qupath-extension-mcp/docs/
+!/qupath-extension-mcp/docs/**
 
 # Maven
 deploy/
