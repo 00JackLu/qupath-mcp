@@ -5,7 +5,7 @@ server, so AI agents (Claude Code, Claude Desktop, Codex, Cursor, …) can drive
 manage annotations/detections, import/export GeoJSON, run Groovy scripts, and invoke plugins.
 
 The extension embeds an HTTP MCP server (Streamable HTTP, MCP spec `2025-03-26`) inside QuPath. Point any
-MCP client at `http://127.0.0.1:9527/mcp` and you get **19 tools**.
+MCP client at `http://127.0.0.1:9527/mcp` and you get **20 tools**.
 
 This module is bundled directly into this QuPath fork (registered in `settings.gradle.kts` and depended on
 by `qupath-app`), so a normal build of the app already includes it — no separate install step needed.
@@ -61,7 +61,7 @@ It exercises the live server using only `curl` and prints PASS/FAIL per check
 | 1 | `GET /health` | `{"status":"ok"}` |
 | 2 | `POST /mcp` `initialize` | `protocolVersion` + `serverInfo` |
 | 3 | `POST /mcp` `ping` | a `result` |
-| 4 | `POST /mcp` `tools/list` | non-empty list of `qupath_*` tools (19) |
+| 4 | `POST /mcp` `tools/list` | non-empty list of `qupath_*` tools (20) |
 | 5 | `POST /mcp` `tools/call` (`qupath_list_objects`) | a well-formed JSON-RPC response |
 
 Override the target with env vars: `HOST=127.0.0.1 PORT=9527 ./test-mcp-server.sh`.
@@ -75,7 +75,7 @@ curl http://127.0.0.1:9527/health
 curl -s -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
   http://127.0.0.1:9527/mcp
-# -> {"jsonrpc":"2.0","id":1,"result":{"tools":[ ... 19 tools ... ]}}
+# -> {"jsonrpc":"2.0","id":1,"result":{"tools":[ ... 20 tools ... ]}}
 ```
 
 ### Unit tests (no running QuPath needed)
@@ -145,7 +145,7 @@ the client is stdio-only.
 
 ---
 
-## 4. Tools (19)
+## 4. Tools (20)
 
 | Group   | Tools |
 |---------|-------|
@@ -153,7 +153,7 @@ the client is stdio-only.
 | Objects | `qupath_list_objects`, `qupath_get_object_details`, `qupath_create_annotation`, `qupath_delete_objects`, `qupath_import_geojson`, `qupath_export_geojson` |
 | Scripts | `qupath_run_script` *(Groovy)*, `qupath_list_scripts` |
 | Project | `qupath_get_project_info`, `qupath_list_images`, `qupath_open_image`, `qupath_save_data` |
-| Plugins | `qupath_list_plugins`, `qupath_run_plugin`, `qupath_get_workflow` |
+| Plugins | `qupath_list_plugins`, `qupath_run_plugin`, `qupath_get_workflow`, `qupath_save_workflow` |
 
 `qupath_run_script` executes Groovy in QuPath's context (full `QPEx` API). It's annotated *destructive* and
 can be disabled — see below. On failure it returns rich diagnostics — `errorType`, `causeChain`,
@@ -168,6 +168,15 @@ vision-capable agent can *see* the view and reason over it — not just read pix
 size-bounded so it can't overflow the model's context: it defaults to JPEG at `maxDimension` 1024 px and
 enforces a `maxBytes` budget (default 350 KB), progressively lowering quality then downscaling until it
 fits. Pass `format: "png"` with `maxBytes: 0` for a lossless full-resolution capture instead.
+
+`qupath_get_workflow` + `qupath_save_workflow` turn a successful analysis into something reproducible: the
+former returns the recorded history as a runnable Groovy `script`, the latter writes it (or an
+agent-curated script passed as `content`) to a file on the local machine — so a user can just ask the
+agent to *"save this workflow"* and later re-run it, including headless via
+`qupath script my_workflow.groovy -p project.qpproj`. A relative path lands in the project's `scripts/`
+directory (or the user home). Saving requires file access to be enabled. Note only QuPath-recorded steps
+(e.g. `runPlugin`, classifiers) are captured automatically — custom logic run through `qupath_run_script`
+is not, so for those the agent should assemble the script and pass it as `content`.
 
 Because it streams on-screen pixels to the agent, `qupath_capture_view` is **disabled by default**. Turn it
 on with **Extensions ▸ MCP Server ▸ Enable View Capture** (a checkbox, off by default) or

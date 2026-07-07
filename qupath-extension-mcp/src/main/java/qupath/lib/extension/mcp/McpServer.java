@@ -117,6 +117,7 @@ public class McpServer {
         toolRegistry.register(new PipelineTools.ListPlugins(toolRegistry));
         toolRegistry.register(new PipelineTools.RunPlugin(toolRegistry));
         toolRegistry.register(new PipelineTools.GetWorkflow(toolRegistry));
+        toolRegistry.register(new PipelineTools.SaveWorkflow(toolRegistry));
     }
 
     /**

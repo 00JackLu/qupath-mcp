@@ -30,9 +30,15 @@ import qupath.lib.extension.mcp.protocol.models.ToolResult;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.images.ImageData;
 import qupath.lib.plugins.PathPlugin;
+import qupath.lib.plugins.workflow.ScriptableWorkflowStep;
 import qupath.lib.plugins.workflow.Workflow;
 import qupath.lib.plugins.workflow.WorkflowStep;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.ServiceLoader;
@@ -240,8 +246,10 @@ public class PipelineTools {
             return new ToolDefinition(
                 NAME,
                 "Get the command history/workflow for the current image. " +
-                "This shows the sequence of operations that have been applied. " +
-                "Useful for understanding what processing has been done and for reproducibility.",
+                "Returns the recorded steps and a runnable Groovy 'script' that reproduces them " +
+                "(QuPath's workflow-to-script), so the analysis can be re-run or saved for later. " +
+                "Note: only operations QuPath records (e.g. runPlugin, classifiers) appear here - custom " +
+                "logic run via qupath_run_script is not captured. Use qupath_save_workflow to persist it.",
                 inputSchema,
                 null,
                 ToolDefinition.Annotations.readOnly()
@@ -267,12 +275,15 @@ public class PipelineTools {
                 for (WorkflowStep step : workflow.getSteps()) {
                     JsonObject stepInfo = new JsonObject();
                     stepInfo.addProperty("name", step.getName());
+                    if (step instanceof ScriptableWorkflowStep sws)
+                        stepInfo.addProperty("script", sws.getScript());
                     steps.add(stepInfo);
                 }
 
                 JsonObject result = new JsonObject();
                 result.addProperty("count", steps.size());
                 result.add("steps", steps);
+                result.addProperty("script", workflow.createScript());
 
                 return ToolResult.success(result);
 
@@ -280,6 +291,148 @@ public class PipelineTools {
                 logger.error("Failed to get workflow", e);
                 return ToolResult.error("Failed to get workflow: " + e.getMessage(), e);
             }
+        }
+    }
+
+    /**
+     * Persist a reproducible Groovy workflow script to a file on the local machine.
+     */
+    public static class SaveWorkflow implements McpTool {
+
+        private static final String NAME = "qupath_save_workflow";
+
+        private final McpToolRegistry registry;
+
+        public SaveWorkflow(McpToolRegistry registry) {
+            this.registry = registry;
+        }
+
+        @Override
+        public ToolDefinition getDefinition() {
+            JsonObject inputSchema = new JsonObject();
+            inputSchema.addProperty("type", "object");
+
+            JsonObject properties = new JsonObject();
+
+            JsonObject path = new JsonObject();
+            path.addProperty("type", "string");
+            path.addProperty("description", "Where to save the script. An absolute path is used as-is; a " +
+                "relative path or a bare filename is resolved against the current project's 'scripts' " +
+                "directory when a project is open, otherwise the user home directory. A '.groovy' extension " +
+                "is appended if missing.");
+            properties.add("path", path);
+
+            JsonObject content = new JsonObject();
+            content.addProperty("type", "string");
+            content.addProperty("description", "The script text to save. If omitted, the current image's " +
+                "recorded history workflow is exported automatically (QuPath's workflow-to-script). Provide " +
+                "this to persist a curated pipeline - e.g. steps you ran via qupath_run_script that the " +
+                "recorded workflow does not capture.");
+            properties.add("content", content);
+
+            JsonObject overwrite = new JsonObject();
+            overwrite.addProperty("type", "boolean");
+            overwrite.addProperty("description", "Overwrite the file if it already exists (default: false).");
+            overwrite.addProperty("default", false);
+            properties.add("overwrite", overwrite);
+
+            inputSchema.add("properties", properties);
+            JsonArray required = new JsonArray();
+            required.add("path");
+            inputSchema.add("required", required);
+            inputSchema.addProperty("additionalProperties", false);
+
+            return new ToolDefinition(
+                NAME,
+                "Save a reproducible Groovy workflow script to a file on the local computer, so a successful " +
+                "analysis can be reused or run headless later (qupath script <file> -p project.qpproj). " +
+                "With no 'content', it exports the current image's recorded history workflow; pass 'content' " +
+                "to save a curated script the agent assembled. Requires file access to be enabled.",
+                inputSchema,
+                null,
+                ToolDefinition.Annotations.destructive()
+            );
+        }
+
+        @Override
+        public ToolResult execute(JsonObject arguments) {
+            if (!registry.getConfig().isEnableFileAccess()) {
+                return ToolResult.error("File access is disabled in MCP configuration "
+                    + "(set QUPATH_MCP_ENABLE_FILE_ACCESS=true to allow saving workflows).");
+            }
+            if (!arguments.has("path") || arguments.get("path").isJsonNull()
+                    || arguments.get("path").getAsString().isBlank()) {
+                return ToolResult.error("Missing required parameter 'path'.");
+            }
+
+            QuPathGUI qupath = registry.getQuPath();
+            boolean overwrite = arguments.has("overwrite") && arguments.get("overwrite").getAsBoolean();
+
+            // Resolve the script content: explicit 'content', else the recorded workflow.
+            String script;
+            String source;
+            if (arguments.has("content") && !arguments.get("content").isJsonNull()) {
+                script = arguments.get("content").getAsString();
+                source = "provided";
+            } else {
+                if (qupath == null)
+                    return ToolResult.error("No QuPath instance available (headless mode); pass 'content'.");
+                ImageData<?> imageData = qupath.getImageData();
+                if (imageData == null)
+                    return ToolResult.error("No image is open to export a recorded workflow from; "
+                        + "open an image or pass 'content'.");
+                String body = imageData.getHistoryWorkflow().createScript();
+                if (body == null || body.isBlank())
+                    return ToolResult.error("The recorded workflow is empty - nothing to save. "
+                        + "Run some operations first, or pass 'content'.");
+                script = "// QuPath workflow exported by the MCP extension\n"
+                    + "// Reproduces the recorded analysis; review parameters before reuse.\n\n" + body;
+                source = "recorded-workflow";
+            }
+
+            try {
+                Path target = resolvePath(qupath, arguments.get("path").getAsString());
+                if (Files.exists(target) && !overwrite) {
+                    return ToolResult.error("File already exists: " + target.toAbsolutePath()
+                        + " (pass overwrite:true to replace it).");
+                }
+                if (target.getParent() != null)
+                    Files.createDirectories(target.getParent());
+                Files.writeString(target, script, StandardCharsets.UTF_8);
+
+                JsonObject result = new JsonObject();
+                result.addProperty("saved", target.toAbsolutePath().toString());
+                result.addProperty("bytes", script.getBytes(StandardCharsets.UTF_8).length);
+                result.addProperty("source", source);
+                return ToolResult.success(result);
+
+            } catch (IOException e) {
+                logger.error("Failed to save workflow", e);
+                return ToolResult.error("Failed to save workflow: " + e.getMessage(), e);
+            }
+        }
+
+        private static Path resolvePath(QuPathGUI qupath, String rawPath) {
+            Path p = Paths.get(rawPath);
+            // Ensure a .groovy extension on the filename.
+            String fileName = p.getFileName().toString();
+            if (!fileName.contains("."))
+                p = p.resolveSibling(fileName + ".groovy");
+
+            if (p.isAbsolute())
+                return p;
+
+            // Relative: prefer the project's scripts directory, else the user home.
+            Path base = null;
+            if (qupath != null && qupath.getProject() != null && qupath.getProject().getPath() != null) {
+                // Project path points at the .qpproj file; its parent is the project directory.
+                Path projectDir = qupath.getProject().getPath().getParent();
+                if (projectDir != null)
+                    base = projectDir.resolve("scripts");
+            }
+            if (base == null)
+                base = Paths.get(System.getProperty("user.home"));
+            return base.resolve(p);
         }
     }
 }
