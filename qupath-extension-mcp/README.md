@@ -35,6 +35,13 @@ To install a prebuilt JAR into a stock QuPath: drag it onto the main QuPath wind
 QuPath *extensions* directory shown under `Extensions ▸ Installed extensions`), then restart when prompted.
 This requires a QuPath 0.8.x build that provides the host APIs this extension uses.
 
+The embedded HTTP server is built on `java.net.ServerSocket` (part of `java.base`), so it needs no extra
+JDK modules — it runs on the trimmed runtime that ships with a stock QuPath install. (An earlier version
+used `com.sun.net.httpserver`, whose `jdk.httpserver` module is *not* bundled in QuPath's jlink runtime,
+which caused `NoClassDefFoundError` on start — that's fixed.) If you replace the JAR in a running QuPath,
+fully **quit and restart** the app so the new classes are loaded, and keep only one copy of the extension
+JAR in the extensions directory.
+
 ## 2. Test that it works
 
 ### Smoke test (running server, end to end)
@@ -149,11 +156,18 @@ the client is stdio-only.
 | Plugins | `qupath_list_plugins`, `qupath_run_plugin`, `qupath_get_workflow` |
 
 `qupath_run_script` executes Groovy in QuPath's context (full `QPEx` API). It's annotated *destructive* and
-can be disabled — see below.
+can be disabled — see below. On failure it returns rich diagnostics — `errorType`, `causeChain`,
+`rootCause` and a full `stackTrace`. Note that some QuPath calls (notably `runPlugin`) catch their own
+exceptions and return `false` instead of throwing; when that happens the script still reports
+`success: true`, but the underlying error is surfaced in a `logs` field with a `warning`, so an agent
+should check those to confirm an operation actually did what it expected.
 
 `qupath_capture_view` returns what QuPath is currently displaying (the rendered slide plus
 annotation/detection overlays at the current zoom/pan) as an MCP **image** content block, so a
-vision-capable agent can *see* the view and reason over it — not just read pixel numbers.
+vision-capable agent can *see* the view and reason over it — not just read pixel numbers. The payload is
+size-bounded so it can't overflow the model's context: it defaults to JPEG at `maxDimension` 1024 px and
+enforces a `maxBytes` budget (default 350 KB), progressively lowering quality then downscaling until it
+fits. Pass `format: "png"` with `maxBytes: 0` for a lossless full-resolution capture instead.
 
 See [`PROMPTS.md`](PROMPTS.md) for a cookbook of natural-language prompts that drive these tools.
 
