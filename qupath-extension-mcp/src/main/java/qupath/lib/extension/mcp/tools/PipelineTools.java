@@ -39,6 +39,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.ServiceLoader;
@@ -314,12 +316,19 @@ public class PipelineTools {
 
             JsonObject properties = new JsonObject();
 
+            JsonObject name = new JsonObject();
+            name.addProperty("type", "string");
+            name.addProperty("description", "Short name for the workflow. The file is saved as " +
+                "'<name>_<yyyy-MM-dd_HH-mm-ss>.groovy'. Default 'workflow'. Illegal filename characters " +
+                "are replaced with underscores.");
+            properties.add("name", name);
+
             JsonObject path = new JsonObject();
             path.addProperty("type", "string");
-            path.addProperty("description", "Where to save the script. An absolute path is used as-is; a " +
-                "relative path or a bare filename is resolved against the current project's 'scripts' " +
-                "directory when a project is open, otherwise the user home directory. A '.groovy' extension " +
-                "is appended if missing.");
+            path.addProperty("description", "Directory to save into. Optional: by default it goes to a " +
+                "'qupath_workflow' folder inside the current project (or your home directory if no project " +
+                "is open). A relative path is resolved against that same base. If you instead pass a path " +
+                "ending in '.groovy', it is used as the exact file name (ignoring 'name'/date).");
             properties.add("path", path);
 
             JsonObject content = new JsonObject();
@@ -332,22 +341,22 @@ public class PipelineTools {
 
             JsonObject overwrite = new JsonObject();
             overwrite.addProperty("type", "boolean");
-            overwrite.addProperty("description", "Overwrite the file if it already exists (default: false).");
+            overwrite.addProperty("description", "Overwrite the file if it already exists (default: false). " +
+                "Rarely needed since the filename includes a timestamp.");
             overwrite.addProperty("default", false);
             properties.add("overwrite", overwrite);
 
             inputSchema.add("properties", properties);
-            JsonArray required = new JsonArray();
-            required.add("path");
-            inputSchema.add("required", required);
             inputSchema.addProperty("additionalProperties", false);
 
             return new ToolDefinition(
                 NAME,
                 "Save a reproducible Groovy workflow script to a file on the local computer, so a successful " +
                 "analysis can be reused or run headless later (qupath script <file> -p project.qpproj). " +
-                "With no 'content', it exports the current image's recorded history workflow; pass 'content' " +
-                "to save a curated script the agent assembled. Requires file access to be enabled.",
+                "By default it writes '<name>_<timestamp>.groovy' into a 'qupath_workflow' folder inside the " +
+                "current project (or the user home directory if no project is open). With no 'content', it " +
+                "exports the current image's recorded history workflow; pass 'content' to save a curated " +
+                "script the agent assembled. Requires file access to be enabled.",
                 inputSchema,
                 null,
                 ToolDefinition.Annotations.destructive()
@@ -360,13 +369,13 @@ public class PipelineTools {
                 return ToolResult.error("File access is disabled in MCP configuration "
                     + "(set QUPATH_MCP_ENABLE_FILE_ACCESS=true to allow saving workflows).");
             }
-            if (!arguments.has("path") || arguments.get("path").isJsonNull()
-                    || arguments.get("path").getAsString().isBlank()) {
-                return ToolResult.error("Missing required parameter 'path'.");
-            }
 
             QuPathGUI qupath = registry.getQuPath();
             boolean overwrite = arguments.has("overwrite") && arguments.get("overwrite").getAsBoolean();
+            String name = arguments.has("name") && !arguments.get("name").isJsonNull()
+                    ? arguments.get("name").getAsString() : "workflow";
+            String rawPath = arguments.has("path") && !arguments.get("path").isJsonNull()
+                    ? arguments.get("path").getAsString() : null;
 
             // Resolve the script content: explicit 'content', else the recorded workflow.
             String script;
@@ -391,7 +400,7 @@ public class PipelineTools {
             }
 
             try {
-                Path target = resolvePath(qupath, arguments.get("path").getAsString());
+                Path target = resolveTarget(qupath, rawPath, name);
                 if (Files.exists(target) && !overwrite) {
                     return ToolResult.error("File already exists: " + target.toAbsolutePath()
                         + " (pass overwrite:true to replace it).");
@@ -412,27 +421,52 @@ public class PipelineTools {
             }
         }
 
-        private static Path resolvePath(QuPathGUI qupath, String rawPath) {
-            Path p = Paths.get(rawPath);
-            // Ensure a .groovy extension on the filename.
-            String fileName = p.getFileName().toString();
-            if (!fileName.contains("."))
-                p = p.resolveSibling(fileName + ".groovy");
+        /**
+         * Work out where to write the workflow. By default this is
+         * {@code <base>/qupath_workflow/<name>_<timestamp>.groovy}, where {@code base} is the open
+         * project's directory or, failing that, the user home. A caller-supplied {@code rawPath} is
+         * treated as a target directory (relative paths resolve against {@code base}) unless it ends
+         * in {@code .groovy}, in which case it is used as the exact file name.
+         */
+        private static Path resolveTarget(QuPathGUI qupath, String rawPath, String name) {
+            Path base = defaultBase(qupath);
 
-            if (p.isAbsolute())
-                return p;
+            // Explicit '.groovy' path => exact file.
+            if (rawPath != null && rawPath.toLowerCase().endsWith(".groovy")) {
+                Path p = Paths.get(rawPath);
+                return p.isAbsolute() ? p : base.resolve(p);
+            }
 
-            // Relative: prefer the project's scripts directory, else the user home.
-            Path base = null;
+            // Otherwise choose a directory and generate a dated, named filename inside it.
+            Path dir;
+            if (rawPath != null && !rawPath.isBlank()) {
+                Path p = Paths.get(rawPath);
+                dir = p.isAbsolute() ? p : base.resolve(p);
+            } else {
+                dir = base.resolve("qupath_workflow");
+            }
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"));
+            return dir.resolve(sanitizeName(name) + "_" + timestamp + ".groovy");
+        }
+
+        /** Project directory if a project is open, otherwise the user home directory. */
+        private static Path defaultBase(QuPathGUI qupath) {
             if (qupath != null && qupath.getProject() != null && qupath.getProject().getPath() != null) {
                 // Project path points at the .qpproj file; its parent is the project directory.
                 Path projectDir = qupath.getProject().getPath().getParent();
                 if (projectDir != null)
-                    base = projectDir.resolve("scripts");
+                    return projectDir;
             }
-            if (base == null)
-                base = Paths.get(System.getProperty("user.home"));
-            return base.resolve(p);
+            return Paths.get(System.getProperty("user.home"));
+        }
+
+        /** Make a workflow name safe to use as a filename stem. */
+        private static String sanitizeName(String name) {
+            String s = name == null ? "" : name.trim();
+            if (s.toLowerCase().endsWith(".groovy"))
+                s = s.substring(0, s.length() - ".groovy".length());
+            s = s.replaceAll("[^A-Za-z0-9._-]", "_");
+            return s.isBlank() ? "workflow" : s;
         }
     }
 }

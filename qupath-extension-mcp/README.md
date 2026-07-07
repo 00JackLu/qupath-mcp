@@ -173,10 +173,12 @@ fits. Pass `format: "png"` with `maxBytes: 0` for a lossless full-resolution cap
 former returns the recorded history as a runnable Groovy `script`, the latter writes it (or an
 agent-curated script passed as `content`) to a file on the local machine — so a user can just ask the
 agent to *"save this workflow"* and later re-run it, including headless via
-`qupath script my_workflow.groovy -p project.qpproj`. A relative path lands in the project's `scripts/`
-directory (or the user home). Saving requires file access to be enabled. Note only QuPath-recorded steps
-(e.g. `runPlugin`, classifiers) are captured automatically — custom logic run through `qupath_run_script`
-is not, so for those the agent should assemble the script and pass it as `content`.
+`qupath script <file> -p project.qpproj`. By default the file is named `<name>_<timestamp>.groovy` and
+saved into a **`qupath_workflow/` folder inside the current project** (or your home directory when no
+project is open); pass a `path` to choose a different directory, or a path ending in `.groovy` for an exact
+file name. Saving requires file access to be enabled. Note only QuPath-recorded steps (e.g. `runPlugin`,
+classifiers) are captured automatically — custom logic run through `qupath_run_script` is not, so for those
+the agent should assemble the script and pass it as `content`.
 
 Because it streams on-screen pixels to the agent, `qupath_capture_view` is **disabled by default**. Turn it
 on with **Extensions ▸ MCP Server ▸ Enable View Capture** (a checkbox, off by default) or
