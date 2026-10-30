@@ -11,6 +11,14 @@ MCP client at `http://127.0.0.1:9527/mcp` and you get **34 tools**.
 
 Works with the official **QuPath 0.7.0** release — no custom QuPath build needed.
 
+<p align="center">
+  <img src="docs/images/mcp-menu.png" width="520" alt="Extensions ▸ MCP Server menu in QuPath: Show Status, Start Server, Stop Server, Enable View Capture, Configuration">
+</p>
+
+| The image the agent inspected ([example 1](examples/01-state-inspection/)) | Cells the agent detected ([example 2](examples/02-cell-detection-export/)) |
+|---|---|
+| ![LuCa-7color multiplex immunofluorescence image in the QuPath viewer](examples/01-state-inspection/viewer_state.jpg) | ![Phenotype map of the 5266 DAPI-detected cells](examples/02-cell-detection-export/detections_after.png) |
+
 ---
 
 ## 1. Install
