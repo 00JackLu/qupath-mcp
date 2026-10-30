@@ -37,7 +37,7 @@ agent completed 26/26 executable benchmark tasks, and a workflow replayed from a
 reproduced 1 annotation and 5266 detections without any LLM.
 
 **Availability and implementation:** QuPath-MCP is a Java extension for QuPath 0.8, freely available
-under the GNU GPL v3 at https://github.com/00JackLu/qupath-mcp and archived at https://doi.org/10.5281/zenodo.23788878.
+under the Apache License 2.0 at https://github.com/00JackLu/qupath-mcp and archived at https://doi.org/10.5281/zenodo.23788878.
 Documentation, three reproducible example workflows, and a 27-task benchmark are included. It is
 platform-independent (Windows, macOS, Linux).
 

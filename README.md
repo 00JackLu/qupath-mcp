@@ -240,3 +240,7 @@ enableScripts=false
 The server binds to `127.0.0.1` (localhost) only and enables Groovy script execution by default — an agent
 can run arbitrary code in QuPath. Set `QUPATH_MCP_ENABLE_SCRIPTS=false` (and `QUPATH_MCP_ENABLE_PLUGINS` /
 `QUPATH_MCP_ENABLE_FILE_ACCESS` as needed) to lock that down, and don't expose the port beyond localhost.
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE). QuPath itself is licensed separately under GPL-3.0.

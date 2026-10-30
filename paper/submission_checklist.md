@@ -6,7 +6,7 @@ action (push / author input / live run) · ⬜ not started.
 | # | Item | Status | Where / note |
 |---|------|:------:|--------------|
 | 1 | GitHub repo public/accessible | ✅ | Public at https://github.com/00JackLu/qupath-mcp. |
-| 2 | License included | ✅ | GNU GPL v3 at repo root `LICENSE` (extension inherits it). |
+| 2 | License included | ✅ | Apache License 2.0 at repo root `LICENSE`. |
 | 3 | README quick start | ✅ | `README.md` §1–3; `docs/quick_start.md`. |
 | 4 | Docs for all tools | ✅ | `docs/tools.md` (all 34 tools, R/W/D hints, plan-name mapping). |
 | 5 | Example data available | ✅ | QuPath public **LuCa-7color** sample; referenced in `examples/README.md`. |

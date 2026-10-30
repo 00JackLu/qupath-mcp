@@ -10,7 +10,7 @@
       "orcid": "0009-0004-2894-7076"
     }
   ],
-  "license": "gpl-3.0-or-later",
+  "license": "apache-2.0",
   "keywords": [
     "QuPath",
     "Model Context Protocol",

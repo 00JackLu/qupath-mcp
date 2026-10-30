@@ -26,7 +26,7 @@ demonstrate the interface on multiplex immunofluorescence, including cell detect
 byte-identical replay from a cleared state, and provide a 27-task benchmark for agent evaluation.
 
 **Availability and implementation:** QuPath-MCP is a Java extension for QuPath 0.8, distributed under
-the GNU GPL v3 (inherited from QuPath) at https://github.com/00JackLu/qupath-mcp with an archived release at
+the Apache License 2.0 at https://github.com/00JackLu/qupath-mcp with an archived release at
 https://doi.org/10.5281/zenodo.23788878. Documentation, three reproducible example workflows, and the benchmark are included.
 
 ---
@@ -163,7 +163,7 @@ tools, and dry-run/confirmation affordances for destructive operations.
 - **Operating systems:** platform-independent (Windows, macOS, Linux)
 - **Programming language:** Java (QuPath 0.8; JDK 25)
 - **Other requirements:** QuPath 0.8.x; an MCP-capable client
-- **License:** GNU GPL v3 (inherited from QuPath)
+- **License:** Apache License 2.0
 
 ## Funding
 

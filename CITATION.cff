@@ -20,7 +20,7 @@ identifiers:
     value: "10.5281/zenodo.23788877"
     description: "Concept DOI (all versions)"
 date-released: "2026-10-30"
-license: GPL-3.0-or-later
+license: Apache-2.0
 repository-code: "https://github.com/00JackLu/qupath-mcp"
 keywords:
   - QuPath
