@@ -7,7 +7,7 @@ plugins {
 qupathExtension {
     name = "qupath-extension-mcp"
     group = "io.github.00jacklu"
-    version = "0.2.0-SNAPSHOT"
+    version = "0.2.0"
     description = "QuPath extension providing an MCP (Model Context Protocol) server for AI agents"
     automaticModule = "qupath.extension.mcp"
 }
