@@ -1,7 +1,5 @@
 # QuPath MCP Extension
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23788877.svg)](https://doi.org/10.5281/zenodo.23788877)
-
 Turns [QuPath](https://qupath.github.io/) into a [Model Context Protocol](https://modelcontextprotocol.io)
 server, so AI agents (Claude Code, Claude Desktop, Codex, Cursor, …) can drive QuPath: read image data,
 manage annotations/detections, import/export GeoJSON, run Groovy scripts, and invoke plugins.
