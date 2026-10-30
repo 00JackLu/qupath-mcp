@@ -53,9 +53,7 @@
             echo "Gradle: $(gradle --version 2>&1 | grep 'Gradle' | head -1)"
             echo ""
             echo "Build commands:"
-            echo "  ./gradlew :qupath-extension-mcp:build    # Build MCP extension"
-            echo "  ./gradlew build                          # Build all"
-            echo "  ./gradlew run                            # Run QuPath"
+            echo "  ./gradlew build    # Build and test; JAR in build/libs/"
             echo ""
             echo "Test MCP server:"
             echo "  curl http://127.0.0.1:9527/health"
@@ -66,7 +64,7 @@
         # Package the extension (optional)
         packages.default = pkgs.stdenv.mkDerivation {
           pname = "qupath-extension-mcp";
-          version = "0.8.0";
+          version = "0.2.0";
 
           src = ./.;
 
@@ -76,12 +74,12 @@
             export JAVA_HOME=${jdk}
             export GRADLE_USER_HOME=$(mktemp -d)
             chmod +x gradlew
-            ./gradlew :qupath-extension-mcp:build --no-daemon
+            ./gradlew build --no-daemon
           '';
 
           installPhase = ''
             mkdir -p $out/lib
-            cp qupath-extension-mcp/build/libs/*.jar $out/lib/
+            cp build/libs/qupath-extension-mcp-*.jar $out/lib/
           '';
         };
       }

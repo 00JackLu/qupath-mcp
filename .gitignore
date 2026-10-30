@@ -1,58 +1,22 @@
-# Javadocs
-docs/
-# ...but keep the MCP extension's research-release documentation (not generated Javadoc)
-!/qupath-extension-mcp/docs/
-!/qupath-extension-mcp/docs/**
+# Gradle
+.gradle/
+build/
+dist/
+# Local properties (e.g. to set a specific JDK)
+gradle.properties
+!gradle/wrapper/gradle-wrapper.jar
 
-# Maven
-deploy/
-target/
-log/
-
-# Config
-include-extra*
-include-extra.*
-
-# IntelliJ
+# IDEs
 .idea/
 *.iml
-out/
-
-# VSCode
-.vscode
-
-# Gradle
-# Use local properties (e.g. to set a specific JDK)
-gradle.properties
-build/
-.gradle/
-gradle.properties
-
-# Eclipse
-.settings/
-.project
+.vscode/
 .classpath
-.checkstyle
+.project
+.settings/
+bin/
 
-# Mac
+# OS
 .DS_Store
 
-# Java
-hs_err*.log
-
-# Other
-*.tmp
-*.bak
-*.swp
-*~.nib
-*thumbs.db
-bin/
-.kotlin
-
-# Nix / direnv
+# Local tooling
 .direnv/
-result
-result-*
-
-# Build/distribution artifacts (regenerable)
-dist/

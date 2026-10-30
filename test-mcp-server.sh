@@ -51,9 +51,9 @@ if ! curl -s --max-time 5 -o /dev/null "${BASE}/health"; then
     echo "  [$(red FAIL)] Cannot reach ${BASE}"
     echo
     echo "  The server is not responding. Make sure QuPath is running with the"
-    echo "  MCP extension and HTTP transport enabled, e.g.:"
-    echo "      QUPATH_MCP_TRANSPORT=HTTP QUPATH_MCP_PORT=${PORT} \\"
-    echo "      QUPATH_MCP_AUTO_START=true ./gradlew run"
+    echo "  MCP extension installed (drag build/libs/qupath-extension-mcp-*.jar"
+    echo "  onto QuPath and restart), and that the server is started from"
+    echo "  Extensions > MCP Server, listening on port ${PORT}."
     exit 1
 fi
 
@@ -81,7 +81,7 @@ esac
 
 # --- 4. tools/list ---------------------------------------------------------
 tools="$(rpc '{"jsonrpc":"2.0","id":3,"method":"tools/list"}')"
-tool_count="$(printf '%s' "$tools" | grep -o '"name"' | wc -l | tr -d ' ')"
+tool_count="$(printf '%s' "$tools" | grep -o '"name":"qupath_' | wc -l | tr -d ' ')"
 case "$tools" in
     *'"qupath_list_objects"'*)
         ok "POST /mcp tools/list -> ${tool_count} tools registered" ;;

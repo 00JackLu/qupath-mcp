@@ -1,2 +1,0 @@
-qupath.lib.images.writers.ome.OMETiffWriter
-qupath.lib.images.writers.ome.zarr.OMEZarrImageWriter
