@@ -64,7 +64,7 @@
         # Package the extension (optional)
         packages.default = pkgs.stdenv.mkDerivation {
           pname = "qupath-extension-mcp";
-          version = "0.2.0";
+          version = "0.2.1";
 
           src = ./.;
 

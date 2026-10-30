@@ -7,7 +7,7 @@ authors:
     given-names: "Zhaoqi"
     affiliation: "Department of Biomedical Engineering, The Hong Kong Polytechnic University"
     orcid: "https://orcid.org/0009-0004-2894-7076"
-version: "0.2.0"
+version: "0.2.1"
 doi: "10.5281/zenodo.23788877"
 identifiers:
   - type: doi
