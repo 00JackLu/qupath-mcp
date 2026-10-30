@@ -1,0 +1,46 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Build and test
+        run: ./gradlew build
+
+      - name: Upload extension JAR
+        uses: actions/upload-artifact@v7
+        with:
+          name: qupath-extension-mcp
+          # Only the drag-and-drop JAR, not the -sources/-javadoc JARs
+          path: |
+            build/libs/qupath-extension-mcp-*.jar
+            !build/libs/*-sources.jar
+            !build/libs/*-javadoc.jar
+          retention-days: 7
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: build/reports/tests/test
+          retention-days: 7

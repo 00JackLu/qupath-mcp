@@ -1,0 +1,49 @@
+name: Release
+
+# Push a tag such as mcp-v0.2.0 to build the extension and publish a GitHub release with the JAR attached.
+# Publishing the release also triggers the Zenodo archive (new version DOI).
+on:
+  push:
+    tags: ["mcp-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the tag matches every version field
+        run: |
+          tag="${GITHUB_REF_NAME#mcp-v}"
+          gradle=$(sed -nE 's/^ *version = "([^"]+)"/\1/p' build.gradle.kts)
+          zenodo=$(jq -r .version .zenodo.json)
+          citation=$(sed -nE 's/^version: "([^"]+)"/\1/p' CITATION.cff)
+          echo "tag=$tag build.gradle.kts=$gradle .zenodo.json=$zenodo CITATION.cff=$citation"
+          if [ "$tag" != "$gradle" ] || [ "$tag" != "$zenodo" ] || [ "$tag" != "$citation" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match build.gradle.kts, .zenodo.json and CITATION.cff"
+            exit 1
+          fi
+          echo "VERSION=$tag" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Build and test
+        run: ./gradlew build
+
+      - name: Publish release with the extension JAR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "build/libs/qupath-extension-mcp-$VERSION.jar" \
+            --verify-tag \
+            --title "QuPath-MCP v$VERSION" \
+            --generate-notes

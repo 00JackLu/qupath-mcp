@@ -1,120 +1,57 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides guidance to coding agents such as Codex when working with code in this repository.
+
+## What this is
+
+QuPath-MCP is a standalone QuPath extension (one JAR) that embeds a Model Context Protocol server inside
+QuPath. Users install it by dragging the JAR onto QuPath 0.7.0. The repository holds only the extension
+plus its docs, examples, benchmark, paper and docs site — QuPath itself is a dependency, not source here.
 
 ## Build Commands
 
-QuPath uses Gradle with Kotlin DSL. Use the Gradle wrapper (`./gradlew` on Unix, `gradlew.bat` on Windows).
-
 ```bash
-# Build the project (compiles, runs tests, creates distribution)
-./gradlew build
-
-# Run the application
-./gradlew run
-
-# Run tests only
-./gradlew test
-
-# Run a specific test class
-./gradlew test --tests "qupath.lib.objects.TestPathObjects"
-
-# Create native installers/packages
-./gradlew jpackage
-
-# Generate merged Javadocs
-./gradlew mergedJavadocs
-
-# Clean build artifacts
-./gradlew clean
+./gradlew build    # compile, run unit tests, build build/libs/qupath-extension-mcp-<version>.jar
+./gradlew test     # unit tests only (no running QuPath needed)
+./gradlew test --tests "qupath.lib.extension.mcp.protocol.TestMcpProtocolHandler"
 ```
 
-**Java Version:** QuPath targets JDK 25 (configured via Gradle toolchains). The build will automatically download the required JDK if not present.
+The build uses QuPath's Gradle plugins (`io.github.qupath.qupath-extension-settings` in
+`settings.gradle.kts`, `qupath-conventions` in `build.gradle.kts`), which supply the `libs` version catalog
+and the JDK 25 toolchain. The target QuPath version is set in `settings.gradle.kts`.
 
-## Module Architecture
+There is no `./gradlew run`: to try a change, build the JAR, drag it onto a QuPath 0.7.0 window, fully
+restart QuPath, then run `./test-mcp-server.sh` against the live server on port 9527.
 
-QuPath is a multi-module Gradle project with clear separation of concerns:
+## Layout
 
 ```
-qupath-app/                    # Main application launcher (qupath.QuPath main class)
-├── qupath-gui-fx/            # JavaFX-based GUI
-│   ├── qupath-core-processing/ # Image processing algorithms (OpenCV, ImageJ)
-│   │   └── qupath-core/      # Core library (no UI dependencies)
-│   │   └── qupath.lib.*      # Core packages: analysis, color, images, objects, roi, scripting
-│   └── qupath-core/
-└── qupath-extension-*/       # Bundled extensions (bioformats, openslide, script-editor, svg, processing)
+src/main/java/qupath/lib/extension/mcp/
+├── McpExtension.java        # QuPathExtension entry point (menu, auto-start)
+├── McpServer.java           # wires the tool registry, protocol handler and transports
+├── McpConfiguration.java    # env vars / system properties / mcp.properties
+├── protocol/                # JSON-RPC + MCP protocol handling, tool/result models
+├── tools/                   # the MCP tools, grouped by area (Image, Object, Analysis, Script, ...)
+├── transport/               # Streamable HTTP (java.net.ServerSocket) and stdio
+└── util/
+src/main/resources/META-INF/services/qupath.lib.gui.extensions.QuPathExtension
+docs/ examples/ benchmark/ paper/ site/   # documentation, workflows, benchmark, manuscript, Pages site
 ```
 
-**Key packages:**
-- `qupath.lib.objects` - Pathology objects (annotations, detections, cells)
-- `qupath.lib.images.servers` - ImageServer abstraction for image backends
-- `qupath.lib.gui.extensions` - Extension API (QuPathExtension interface)
-- `qupath.lib.scripting` - Groovy scripting support
+- Extensions are discovered via `ServiceLoader`; keep the service file in sync with `McpExtension`.
+- Every tool declares a side-effect hint (read-only / write / destructive); keep `docs/tools.md` in sync
+  when adding or changing tools.
+- The HTTP server must stay on `java.base` only — QuPath's bundled runtime has no `jdk.httpserver`.
 
-**Dependency flow:** qupath-app → qupath-gui-fx → qupath-core-processing → qupath-core
+## Releases
 
-## Extension Architecture
-
-QuPath uses Java's ServiceLoader for plugin discovery:
-
-1. **QuPathExtension** - Implement this interface for general extensions
-   - `installExtension(QuPathGUI)` - Called when GUI starts
-   - `installHeadless()` - Called for headless/script mode
-   - Register in `META-INF/services/qupath.lib.gui.extensions.QuPathExtension`
-
-2. **ImageServerBuilder** - Implement to add image format support
-   - Register in `META-INF/services/qupath.lib.images.servers.ImageServerBuilder`
-
-Extensions are discovered at runtime and can be added as separate JARs without modifying core code.
-
-## Entry Points
-
-- **GUI Mode:** `qupath.QuPath` → `QuPathApp.launch()` → `QuPathGUI` (singleton)
-- **Headless/Script Mode:** `qupath.QuPath script <script.groovy> [options]`
-- **TMA Viewer:** `qupath.QuPath --tma`
-
-Command-line options:
-```bash
-./gradlew run --args="--help"           # Show all options
-./gradlew run --args="script --help"    # Show script options
-./gradlew run --args="script script.groovy -p project.qpproj"  # Run script on project
-```
-
-## Testing
-
-- **Framework:** JUnit 5 (Jupiter)
-- **Naming Convention:** Test files MUST be named `Test*.java` (enforced by checkstyle)
-- **Location:** `*/src/test/java/` parallel to source directories
-- Tests run automatically during `./gradlew build`
+Bump the version in `build.gradle.kts`, `.zenodo.json` and `CITATION.cff`, then push a tag `mcp-v<version>`.
+`.github/workflows/release.yml` verifies the versions match, builds, and publishes a GitHub release with the
+JAR; Zenodo archives it and mints a DOI. `.github/workflows/build.yml` runs on pushes and PRs to `main`.
 
 ## Code Style
 
-Checkstyle enforces these rules (`config/checkstyle/checkstyle.xml`):
-- Correct modifier order
-- No redundant or unused imports
-- No starred imports (use full import lists)
-
-**Conventions:**
-- `CamelCase` with capital for classes, lowercase for methods/variables
-- Always use `@Override` annotation when overriding methods
-- UTF-8 encoding for all text files
-- Javadoc required for all `public` and `protected` members
-- Prefer JSON serialization via `qupath.lib.io.GsonTools` over Java serialization
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `VERSION` | Current version string |
-| `gradle/libs.versions.toml` | All dependency versions |
-| `buildSrc/` | Gradle convention plugins |
-| `qupath.lib.gui.QuPathGUI` | Main GUI singleton class |
-| `qupath.lib.gui.extensions.QuPathExtension` | Extension interface |
-| `qupath.lib.images.servers.ImageServerBuilder` | Image server SPI |
-
-## Maven Publishing
-
-Published to SciJava Maven:
-- Releases: `https://maven.scijava.org/content/repositories/releases`
-- Snapshots: `https://maven.scijava.org/content/repositories/snapshots`
-- Group ID: `io.github.qupath`
+- Tests are named `Test*.java` and use JUnit 5.
+- No starred or unused imports; always use `@Override`.
+- Javadoc for all `public` and `protected` members.
+- Prefer JSON via `qupath.lib.io.GsonTools`.
