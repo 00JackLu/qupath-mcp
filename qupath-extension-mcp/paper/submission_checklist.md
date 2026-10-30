@@ -5,7 +5,7 @@ action (push / author input / live run) · ⬜ not started.
 
 | # | Item | Status | Where / note |
 |---|------|:------:|--------------|
-| 1 | GitHub repo public/accessible | 🟡 | Pushed to `origin` (00JackLu/qupath-mcp), `main` synced. Make the repo **public** to fully close. |
+| 1 | GitHub repo public/accessible | ✅ | Public at https://github.com/00JackLu/qupath-mcp. |
 | 2 | License included | ✅ | GNU GPL v3 at repo root `LICENSE` (extension inherits it). |
 | 3 | README quick start | ✅ | `README.md` §1–3; `docs/quick_start.md`. |
 | 4 | Docs for all tools | ✅ | `docs/tools.md` (all 34 tools, R/W/D hints, plan-name mapping). |
@@ -16,17 +16,16 @@ action (push / author input / live run) · ⬜ not started.
 | 9 | Figure 1 complete | ✅ | `paper/figures/figure1_system_overview.svg`. |
 | 10 | Figure 2 complete | ✅ | `paper/figures/figure2_example_workflow.svg`. |
 | 11 | Tool table complete | ✅ | `paper/tables/table1_tool_categories.md` (Table 1). |
-| 12 | Release archived (Zenodo) | ⬜ | After push + tag; mint DOI, paste into draft + this table. |
-| 13 | Availability & Implementation section | 🟡 | `paper/draft.md` §Availability; URL/DOI placeholders pending #1/#12. |
+| 12 | Release archived (Zenodo) | ✅ | Release `mcp-v0.1.0` → DOI `10.5281/zenodo.23788878` (concept DOI `10.5281/zenodo.23788877`). |
+| 13 | Availability & Implementation section | ✅ | Repo URL and Zenodo DOI filled in `draft.md` and `applications_note.md`. |
 | 14 | New-user install works | 🟡 | README drop-in / build-from-fork instructions; verify on a clean QuPath 0.8 install. |
 | 15 | Clearly > a run_script wrapper | ✅ | Table 1 (34 tools; `run_script` is 1 gated fallback), provenance/replay, adversarial benchmark cards. |
 
 ## Remaining external actions (not blocking the writeup)
 
-1. **Push** the held commits to `origin` and make the repo public *(needs explicit user authorization —
-   currently held)*.
+1. ~~**Push** the held commits to `origin` and make the repo public~~ — done.
 2. **Live benchmark runs** → fill `benchmark/results_*.csv` and Table 2.
-3. **Zenodo** archive of a tagged release → DOI into `draft.md` and item #12.
+3. ~~**Zenodo** archive of a tagged release~~ — done: `10.5281/zenodo.23788878`.
 4. **Author metadata** (names, affiliations, corresponding author, funding) into `draft.md`.
 5. **Clean-install smoke test** of the extension JAR on a stock QuPath 0.8.
 

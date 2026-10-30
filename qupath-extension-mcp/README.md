@@ -1,5 +1,7 @@
 # QuPath MCP Extension
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23788877.svg)](https://doi.org/10.5281/zenodo.23788877)
+
 Turns [QuPath](https://qupath.github.io/) into a [Model Context Protocol](https://modelcontextprotocol.io)
 server, so AI agents (Claude Code, Claude Desktop, Codex, Cursor, …) can drive QuPath: read image data,
 manage annotations/detections, import/export GeoJSON, run Groovy scripts, and invoke plugins.
@@ -224,3 +226,16 @@ enableScripts=false
 The server binds to `127.0.0.1` (localhost) only and enables Groovy script execution by default — an agent
 can run arbitrary code in QuPath. Set `QUPATH_MCP_ENABLE_SCRIPTS=false` (and `QUPATH_MCP_ENABLE_PLUGINS` /
 `QUPATH_MCP_ENABLE_FILE_ACCESS` as needed) to lock that down, and don't expose the port beyond localhost.
+
+## How to cite
+
+If you use QuPath-MCP in published work, please cite the archived release and QuPath itself:
+
+> Lu, Z. (2026). *QuPath-MCP: a state-aware interface for reproducible AI-agent workflows in digital
+> pathology* (Version 0.1.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23788878
+
+> Bankhead, P. *et al.* (2017). QuPath: Open source software for digital pathology image analysis.
+> *Scientific Reports* 7, 16878. https://doi.org/10.1038/s41598-017-17204-5
+
+The DOI above pins v0.1.0; [10.5281/zenodo.23788877](https://doi.org/10.5281/zenodo.23788877) always resolves to the latest release. BibTeX
+and other formats are available from GitHub's **Cite this repository** button (from `CITATION.cff`).

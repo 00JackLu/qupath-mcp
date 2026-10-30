@@ -4,6 +4,9 @@
 [![Paper](https://zenodo.org/badge/DOI/10.1038/s41598-017-17204-5.svg)](https://doi.org/10.1038/s41598-017-17204-5)
 [![Twitter](https://img.shields.io/twitter/follow/qupath?style=flat)](http://twitter.com/qupath)
 
+> **This repository is QuPath-MCP**, a QuPath fork bundling an MCP server extension for AI agents.
+> See [`qupath-extension-mcp/`](qupath-extension-mcp/README.md) · [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23788877.svg)](https://doi.org/10.5281/zenodo.23788877)
+
 # QuPath
 
 **QuPath is open source software for bioimage analysis**.

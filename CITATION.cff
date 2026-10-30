@@ -8,6 +8,14 @@ authors:
     affiliation: "Department of Biomedical Engineering, The Hong Kong Polytechnic University"
     orcid: "https://orcid.org/0009-0004-2894-7076"
 version: "0.1.0"
+doi: "10.5281/zenodo.23788878"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.23788878"
+    description: "Archived release v0.1.0"
+  - type: doi
+    value: "10.5281/zenodo.23788877"
+    description: "Concept DOI (all versions)"
 date-released: "2026-10-30"
 license: GPL-3.0-or-later
 repository-code: "https://github.com/00JackLu/qupath-mcp"
