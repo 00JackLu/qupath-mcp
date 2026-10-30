@@ -85,7 +85,7 @@ public class ObjectTools {
             JsonObject type = new JsonObject();
             type.addProperty("type", "string");
             type.addProperty("description", "Filter by object type (case-insensitive; singular or plural accepted)");
-            type.addProperty("enum", GSON.toJson(new String[]{"all", "annotation", "detection", "cell", "tile", "tma"}));
+            type.add("enum", GSON.toJsonTree(new String[]{"all", "annotation", "detection", "cell", "tile", "tma"}));
             type.addProperty("default", "all");
             properties.add("type", type);
 

@@ -148,6 +148,20 @@ public class TestMcpProtocolHandler {
     }
 
     @Test
+    public void test_ToolSchemaEnumsAreArrays() {
+        // Strict MCP clients drop a tool whose schema has a non-array "enum" (JSON Schema requires an array)
+        var response = handle("""
+                {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+                """);
+
+        JsonArray tools = response.getAsJsonObject("result").getAsJsonArray("tools");
+        for (JsonElement element : tools) {
+            JsonObject tool = element.getAsJsonObject();
+            assertEnumsAreArrays(tool.get("inputSchema"), tool.get("name").getAsString() + ".inputSchema");
+        }
+    }
+
+    @Test
     public void test_UnknownToolReturnsError() {
         var response = handle("""
                 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"does_not_exist","arguments":{}}}
@@ -221,6 +235,26 @@ public class TestMcpProtocolHandler {
         McpServer server = new McpServer(new McpConfiguration(), null);
         var handler = new McpProtocolHandler(server.getToolRegistry(), "test-server", "0.0.1");
         return handler.handleRequest(request);
+    }
+
+    /**
+     * Recursively check that every "enum" in a JSON schema is a non-empty array.
+     */
+    private static void assertEnumsAreArrays(JsonElement schema, String path) {
+        if (schema.isJsonArray()) {
+            int i = 0;
+            for (JsonElement item : schema.getAsJsonArray())
+                assertEnumsAreArrays(item, path + "[" + i++ + "]");
+        } else if (schema.isJsonObject()) {
+            for (var entry : schema.getAsJsonObject().entrySet()) {
+                String childPath = path + "." + entry.getKey();
+                if ("enum".equals(entry.getKey())) {
+                    assertTrue(entry.getValue().isJsonArray() && !entry.getValue().getAsJsonArray().isEmpty(),
+                            childPath + " must be a non-empty array, got: " + entry.getValue());
+                }
+                assertEnumsAreArrays(entry.getValue(), childPath);
+            }
+        }
     }
 
     private static void assertNullResponse(String raw) {
