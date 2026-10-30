@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use QuPath-MCP, please cite it as below. Please also cite QuPath itself."
+title: "QuPath-MCP: a state-aware interface for reproducible AI-agent workflows in digital pathology"
+type: software
+authors:
+  - family-names: "Lu"
+    given-names: "Zhaoqi"
+    affiliation: "Department of Biomedical Engineering, The Hong Kong Polytechnic University"
+    orcid: "https://orcid.org/0009-0004-2894-7076"
+version: "0.1.0"
+date-released: "2026-10-30"
+license: GPL-3.0-or-later
+repository-code: "https://github.com/00JackLu/qupath-mcp"
+keywords:
+  - QuPath
+  - Model Context Protocol
+  - digital pathology
+  - AI agents
+  - reproducibility
+references:
+  - type: article
+    title: "QuPath: Open source software for digital pathology image analysis"
+    authors:
+      - family-names: "Bankhead"
+        given-names: "Peter"
+      - name: "et al."
+    journal: "Scientific Reports"
+    volume: 7
+    start: 16878
+    year: 2017
+    doi: "10.1038/s41598-017-17204-5"

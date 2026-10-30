@@ -1,0 +1,37 @@
+{
+  "title": "QuPath-MCP: a state-aware interface for reproducible AI-agent workflows in digital pathology",
+  "upload_type": "software",
+  "description": "<p>QuPath-MCP is a QuPath extension that embeds a Model Context Protocol (MCP) server, letting AI agents inspect, execute, verify and reproduce digital-pathology workflows in QuPath. It exposes 34 typed tools spanning image/project state, viewer perception, annotation, detection and measurement, script execution and workflow provenance. Every tool declares a machine-readable side-effect hint (read-only, write or destructive), destructive capabilities are individually gated, and a provenance layer records each executed step so a saved workflow can be replayed deterministically with no model in the loop.</p><p>This archive contains the full QuPath fork in which the extension is bundled (module <code>qupath-extension-mcp</code>), derived from QuPath (Bankhead et al., 2017).</p>",
+  "creators": [
+    {
+      "name": "Lu, Zhaoqi",
+      "affiliation": "Department of Biomedical Engineering, The Hong Kong Polytechnic University",
+      "orcid": "0009-0004-2894-7076"
+    }
+  ],
+  "license": "gpl-3.0-or-later",
+  "keywords": [
+    "QuPath",
+    "Model Context Protocol",
+    "MCP",
+    "digital pathology",
+    "bioimage analysis",
+    "AI agents",
+    "large language models",
+    "reproducibility"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/qupath/qupath",
+      "relation": "isDerivedFrom",
+      "resource_type": "software",
+      "scheme": "url"
+    },
+    {
+      "identifier": "10.1038/s41598-017-17204-5",
+      "relation": "references",
+      "resource_type": "publication-article",
+      "scheme": "doi"
+    }
+  ]
+}
